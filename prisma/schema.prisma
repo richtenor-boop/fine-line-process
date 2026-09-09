@@ -1,0 +1,1576 @@
+// Fine Line Process — Database Schema (source of truth for the ERD)
+//
+// Design conventions used throughout this file:
+// - IDs: cuid() strings.
+// - Every tenant-owned model carries `organizationId` for row-level partitioning. On "root"
+//   aggregate models (User, Contact, Property, Lead, Pipeline, Campaign, Deal, Buyer, Document,
+//   Role, Team) it is a formal `@relation` so `organization.leads` etc. can be traversed and
+//   cascade behavior is explicit. On detail/child models it is a plain indexed scalar column —
+//   still enforced by the service layer (see src/lib/db/tenant.ts) and available for a future
+//   Postgres RLS policy — declaring a full `@relation` on every one of the ~50 child tables would
+//   force ~50 matching array fields onto Organization for no query benefit. This tradeoff is
+//   recorded in docs/02-database-erd.md.
+// - Audit fields: `createdAt`, `updatedAt` are real columns everywhere. `createdById` /
+//   `updatedById` are plain scalar user-id strings (not Prisma relations) to avoid a combinatorial
+//   explosion of back-relations on User — "who did this" is an audit trail concern, not a query
+//   join the app needs to perform in reverse ("give me every row this user touched" goes through
+//   AuditLog instead). Functional ownership FKs (assignedUserId, ownerUserId, authorUserId, etc.)
+//   ARE formal relations because the app genuinely queries "my leads" / "my tasks" that way.
+// - Soft deletion: `deletedAt DateTime?` on models where records must survive removal for audit /
+//   compliance / undo (Lead, Contact, Property, Deal, Document, Campaign). Pure join/detail rows
+//   (PhoneNumber, Tag associations, etc.) hard-delete.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =========================================================================================
+// 1. IDENTITY, TENANCY, RBAC  — Phase 1
+// =========================================================================================
+
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  timezone  String    @default("America/New_York")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users         User[]
+  roles         Role[]
+  teams         Team[]
+  contacts      Contact[]
+  properties    Property[]
+  leads         Lead[]
+  pipelines     Pipeline[]
+  campaigns     Campaign[]
+  deals         Deal[]
+  buyers        Buyer[]
+  documents     Document[]
+  auditLogs     AuditLog[]
+  customFields  CustomFieldDefinition[]
+  notifications Notification[]
+
+  @@map("organizations")
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roleId         String
+  role           Role         @relation(fields: [roleId], references: [id])
+
+  name         String
+  email        String     @unique
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  phone        String?
+  avatarUrl    String?
+
+  mfaEnabled Boolean @default(false)
+  mfaSecret  String?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  accounts        Account[]
+  sessions        Session[]
+  teamMemberships TeamMember[]
+
+  leadsAssigned        Lead[]         @relation("LeadAssignedUser")
+  tasksAssigned        Task[]         @relation("TaskAssignedUser")
+  appointmentsAssigned Appointment[]  @relation("AppointmentAssignedUser")
+  dealsOwned           Deal[]         @relation("DealOwnerUser")
+  notesAuthored        Note[]         @relation("NoteAuthorUser")
+  callsHandled         Call[]         @relation("CallHandledByUser")
+  documentsUploaded    Document[]     @relation("DocumentUploadedByUser")
+  notifications        Notification[] @relation("NotificationRecipientUser")
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+// NextAuth (Auth.js) adapter tables
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Fixed, seeded permission catalog. Custom/editable roles per-org are PLANNED (post-MVP);
+// MVP ships a fixed set of seeded Roles per organization (Owner, Administrator, Manager,
+// Acquisitions, Lead Manager, Researcher, Dispositions, Transaction Coordinator, Read Only)
+// whose RolePermission rows administrators can still toggle.
+model Permission {
+  id          String @id @default(cuid())
+  key         String @unique // e.g. "leads:edit"
+  description String
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  isSystem       Boolean      @default(true) // seeded system role vs future custom role
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Team {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  members TeamMember[]
+
+  @@index([organizationId])
+  @@map("teams")
+}
+
+model TeamMember {
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@map("team_members")
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  action         String // e.g. "lead.stage_changed"
+  entityType     String
+  entityId       String
+  previousValue  Json?
+  newValue       Json?
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  user           User      @relation("NotificationRecipientUser", fields: [userId], references: [id], onDelete: Cascade)
+  type           String
+  title          String
+  body           String?
+  entityType     String?
+  entityId       String?
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organizationRef Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, readAt])
+  @@map("notifications")
+}
+
+// =========================================================================================
+// 2. CONTACTS, PROPERTIES, OWNERS — Phase 2
+// =========================================================================================
+
+enum ContactType {
+  SELLER
+  BUYER
+  VENDOR
+  ATTORNEY
+  AGENT
+  HEIR
+  PERSONAL_REPRESENTATIVE
+  OTHER
+}
+
+model Contact {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  firstName String
+  lastName  String
+  type      ContactType @default(SELLER)
+  company   String?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  phoneNumbers      PhoneNumber[]
+  emailAddresses    EmailAddress[]
+  mailingAddresses  MailingAddress[]
+  propertyLinks     PropertyOwner[]
+  leads             Lead[]
+  tags              TagAssignment[]
+  customFieldValues CustomFieldValue[]
+  buyerProfile      Buyer?
+
+  @@index([organizationId])
+  @@index([organizationId, lastName, firstName])
+  @@map("contacts")
+}
+
+model PhoneNumber {
+  id             String   @id @default(cuid())
+  organizationId String
+  contactId      String
+  contact        Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  number         String
+  label          String? // mobile / home / work
+  isPrimary      Boolean  @default(false)
+  isDncListed    Boolean  @default(false)
+  smsOptedOut    Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, number])
+  @@map("phone_numbers")
+}
+
+model EmailAddress {
+  id             String   @id @default(cuid())
+  organizationId String
+  contactId      String
+  contact        Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  email          String
+  isPrimary      Boolean  @default(false)
+  unsubscribed   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, email])
+  @@map("email_addresses")
+}
+
+model MailingAddress {
+  id             String   @id @default(cuid())
+  organizationId String
+  contactId      String?
+  contact        Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  line1          String
+  line2          String?
+  city           String
+  state          String
+  zip            String
+  isPrimary      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("mailing_addresses")
+}
+
+enum PropertyType {
+  SINGLE_FAMILY
+  MULTI_FAMILY
+  CONDO
+  TOWNHOME
+  MOBILE_HOME
+  LAND
+  COMMERCIAL
+  OTHER
+}
+
+model Property {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  county       String?
+  state        String
+  zip          String
+  parcelNumber String?
+
+  propertyType PropertyType @default(SINGLE_FAMILY)
+  bedrooms     Int?
+  bathrooms    Float?
+  squareFeet   Int?
+  lotSizeSqft  Int?
+  yearBuilt    Int?
+
+  estimatedValue  Decimal? @db.Decimal(12, 2)
+  arv             Decimal? @db.Decimal(12, 2)
+  mortgageBalance Decimal? @db.Decimal(12, 2)
+  estimatedEquity Decimal? @db.Decimal(12, 2)
+  taxAmount       Decimal? @db.Decimal(12, 2)
+  taxStatus       String?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  owners              PropertyOwner[]
+  leads               Lead[]
+  tasks               Task[]
+  notes               Note[]
+  documents           Document[]
+  deals               Deal[]
+  valuations          PropertyValuation[]
+  comparableSales     ComparableSale[]
+  repairEstimates     RepairEstimate[]
+  liens               Lien[]
+  mortgages           Mortgage[]
+  foreclosure         Foreclosure?
+  taxSale             TaxSale?
+  probateCase         ProbateCase?
+  shortSale           ShortSale?
+  auctions            Auction[]
+  creativeFinanceDeal CreativeFinanceDeal?
+  customFieldValues   CustomFieldValue[]
+
+  @@index([organizationId])
+  @@index([organizationId, state, county])
+  @@index([organizationId, zip])
+  @@map("properties")
+}
+
+enum OwnershipType {
+  SOLE
+  JOINT
+  TRUST
+  ESTATE
+  LLC
+  OTHER
+}
+
+model PropertyOwner {
+  id             String        @id @default(cuid())
+  organizationId String
+  propertyId     String
+  property       Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  ownershipType  OwnershipType @default(SOLE)
+  ownershipPct   Float?
+  createdAt      DateTime      @default(now())
+
+  @@unique([propertyId, contactId])
+  @@index([organizationId])
+  @@map("property_owners")
+}
+
+// =========================================================================================
+// 3. LEAD SOURCES, CAMPAIGNS, TAGS, LISTS, CUSTOM FIELDS — Phase 2/6
+// =========================================================================================
+
+model LeadSource {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  leads     Lead[]
+  campaigns Campaign[]
+
+  @@index([organizationId])
+  @@map("lead_sources")
+}
+
+enum CampaignChannel {
+  SMS
+  EMAIL
+  PHONE_TASK
+  VOICEMAIL
+  DIRECT_MAIL_TASK
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  status         CampaignStatus @default(DRAFT)
+  leadSourceId   String?
+  leadSource     LeadSource?    @relation(fields: [leadSourceId], references: [id])
+
+  respectQuietHours    Boolean @default(true)
+  respectBusinessHours Boolean @default(true)
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  steps          CampaignStep[]
+  enrollments    CampaignEnrollment[]
+  marketingCosts MarketingCost[]
+  leads          Lead[]
+
+  @@index([organizationId])
+  @@map("campaigns")
+}
+
+model CampaignStep {
+  id           String          @id @default(cuid())
+  campaignId   String
+  campaign     Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  order        Int
+  channel      CampaignChannel
+  delayDays    Int             @default(0)
+  templateBody String?         @db.Text
+  subject      String?
+
+  @@index([campaignId, order])
+  @@map("campaign_steps")
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  STOPPED
+}
+
+model CampaignEnrollment {
+  id               String           @id @default(cuid())
+  campaignId       String
+  campaign         Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  leadId           String
+  lead             Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  currentStepOrder Int              @default(0)
+  status           EnrollmentStatus @default(ACTIVE)
+  stoppedReason    String?
+  enrolledAt       DateTime         @default(now())
+  completedAt      DateTime?
+
+  @@unique([campaignId, leadId])
+  @@map("campaign_enrollments")
+}
+
+model Tag {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  color          String?
+
+  leadTags TagAssignment[]
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+// Polymorphic tag assignment: exactly one of leadId / contactId / propertyId is set.
+model TagAssignment {
+  id        String   @id @default(cuid())
+  tagId     String
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([tagId, leadId, contactId])
+  @@map("tag_assignments")
+}
+
+model SmartList {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  filterJson     Json // serialized filter definition
+  isArchived     Boolean  @default(false)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("smart_lists")
+}
+
+enum CustomFieldEntity {
+  LEAD
+  CONTACT
+  PROPERTY
+  DEAL
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+}
+
+model CustomFieldDefinition {
+  id             String            @id @default(cuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entity         CustomFieldEntity
+  label          String
+  fieldType      CustomFieldType
+  options        Json? // for SELECT type
+  isRequired     Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+
+  values CustomFieldValue[]
+
+  @@index([organizationId, entity])
+  @@map("custom_field_definitions")
+}
+
+model CustomFieldValue {
+  id           String                @id @default(cuid())
+  definitionId String
+  definition   CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  leadId       String?
+  lead         Lead?                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contactId    String?
+  contact      Contact?              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  propertyId   String?
+  property     Property?             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  dealId       String?
+  deal         Deal?                 @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  value        String?
+
+  @@index([definitionId])
+  @@map("custom_field_values")
+}
+
+// =========================================================================================
+// 4. PIPELINES, STAGES, LEADS — Phase 3
+// =========================================================================================
+
+enum PipelineType {
+  GENERAL
+  PRE_FORECLOSURE
+  TAX_SURPLUS
+  PROBATE
+  SHORT_SALE
+  DISPOSITIONS
+}
+
+model Pipeline {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  type           PipelineType @default(GENERAL)
+  isDefault      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  stages PipelineStage[]
+  leads  Lead[]
+
+  @@index([organizationId])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id         String   @id @default(cuid())
+  pipelineId String
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name       String
+  order      Int
+  isWon      Boolean  @default(false)
+  isLost     Boolean  @default(false)
+
+  leads Lead[]
+
+  @@index([pipelineId, order])
+  @@map("pipeline_stages")
+}
+
+enum LeadMotivation {
+  LOW
+  MEDIUM
+  HIGH
+  UNKNOWN
+}
+
+model Lead {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  contactId  String
+  contact    Contact   @relation(fields: [contactId], references: [id])
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id])
+
+  pipelineId String
+  pipeline   Pipeline      @relation(fields: [pipelineId], references: [id])
+  stageId    String
+  stage      PipelineStage @relation(fields: [stageId], references: [id])
+
+  assignedUserId String?
+  assignedUser   User?   @relation("LeadAssignedUser", fields: [assignedUserId], references: [id])
+
+  leadSourceId String?
+  leadSource   LeadSource? @relation(fields: [leadSourceId], references: [id])
+  campaignId   String?
+  campaign     Campaign?   @relation(fields: [campaignId], references: [id])
+
+  motivation     LeadMotivation @default(UNKNOWN)
+  timeline       String?
+  askingPrice    Decimal?       @db.Decimal(12, 2)
+  offerAmount    Decimal?       @db.Decimal(12, 2)
+  nextFollowUpAt DateTime?
+
+  aiScore       Int?
+  aiScoreReason String? @db.Text
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  tasks               Task[]
+  appointments        Appointment[]
+  notes               Note[]
+  calls               Call[]
+  smsMessages         SmsMessage[]
+  emails              Email[]
+  conversations       Conversation[]
+  documents           Document[]
+  offers              Offer[]
+  deal                Deal?
+  tags                TagAssignment[]
+  customFieldValues   CustomFieldValue[]
+  campaignEnrollments CampaignEnrollment[]
+  stageHistory        LeadStageHistory[]
+
+  @@index([organizationId])
+  @@index([organizationId, stageId])
+  @@index([organizationId, assignedUserId])
+  @@index([organizationId, pipelineId])
+  @@map("leads")
+}
+
+model LeadStageHistory {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromStageId String?
+  toStageId   String
+  changedById String?
+  changedAt   DateTime @default(now())
+
+  @@index([leadId])
+  @@map("lead_stage_history")
+}
+
+// =========================================================================================
+// 5. TASKS, APPOINTMENTS, NOTES — Phase 3
+// =========================================================================================
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Task {
+  id             String    @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?   @db.Text
+  leadId         String?
+  lead           Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  propertyId     String?
+  property       Property? @relation(fields: [propertyId], references: [id])
+  assignedUserId String?
+  assignedUser   User?     @relation("TaskAssignedUser", fields: [assignedUserId], references: [id])
+
+  priority       TaskPriority @default(MEDIUM)
+  status         TaskStatus   @default(OPEN)
+  dueAt          DateTime?
+  isRecurring    Boolean      @default(false)
+  recurrenceRule String?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  notes Note[]
+
+  @@index([organizationId, assignedUserId, status])
+  @@index([organizationId, dueAt])
+  @@map("tasks")
+}
+
+enum AppointmentType {
+  CONSULTATION
+  PROPERTY_WALK
+  CLOSING
+  COURT_DATE
+  AUCTION
+  OTHER
+}
+
+model Appointment {
+  id             String  @id @default(cuid())
+  organizationId String
+  leadId         String?
+  lead           Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedUserId String?
+  assignedUser   User?   @relation("AppointmentAssignedUser", fields: [assignedUserId], references: [id])
+
+  type     AppointmentType @default(CONSULTATION)
+  startAt  DateTime
+  endAt    DateTime
+  location String?
+  notes    String?         @db.Text
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  cancelledAt DateTime?
+
+  @@index([organizationId, assignedUserId, startAt])
+  @@map("appointments")
+}
+
+// Polymorphic note: exactly one of leadId / propertyId / dealId / taskId is set. Also doubles as
+// a Task's "Comments" (source spec §7) rather than a separate comment model.
+model Note {
+  id             String    @id @default(cuid())
+  organizationId String
+  leadId         String?
+  lead           Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  propertyId     String?
+  property       Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  dealId         String?
+  deal           Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  taskId         String?
+  task           Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  authorUserId String
+  author       User   @relation("NoteAuthorUser", fields: [authorUserId], references: [id])
+  body         String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, leadId])
+  @@map("notes")
+}
+
+// =========================================================================================
+// 6. COMMUNICATIONS — Phase 5
+// =========================================================================================
+
+enum ConversationChannel {
+  SMS
+  EMAIL
+  CALL
+}
+
+model Conversation {
+  id             String              @id @default(cuid())
+  organizationId String
+  leadId         String
+  lead           Lead                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  channel        ConversationChannel
+  lastMessageAt  DateTime            @default(now())
+  createdAt      DateTime            @default(now())
+
+  calls       Call[]
+  smsMessages SmsMessage[]
+  emails      Email[]
+
+  @@index([organizationId, leadId])
+  @@map("conversations")
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallDisposition {
+  INTERESTED
+  FOLLOW_UP
+  APPOINTMENT_SET
+  NOT_INTERESTED
+  WRONG_NUMBER
+  DISCONNECTED
+  DNC
+  NEEDS_MORE_INFO
+}
+
+model Call {
+  id              String        @id @default(cuid())
+  organizationId  String
+  leadId          String?
+  lead            Lead?         @relation(fields: [leadId], references: [id])
+  conversationId  String?
+  conversation    Conversation? @relation(fields: [conversationId], references: [id])
+  handledByUserId String?
+  handledBy       User?         @relation("CallHandledByUser", fields: [handledByUserId], references: [id])
+
+  direction       CallDirection
+  fromNumber      String
+  toNumber        String
+  durationSeconds Int?
+  disposition     CallDisposition?
+  recordingUrl    String? // set only when a real telephony provider is configured — PLANNED
+  transcriptText  String?          @db.Text
+  notes           String?          @db.Text
+  providerCallSid String? // external provider reference id
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, leadId])
+  @@map("calls")
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  RECEIVED
+}
+
+model SmsMessage {
+  id             String        @id @default(cuid())
+  organizationId String
+  leadId         String?
+  lead           Lead?         @relation(fields: [leadId], references: [id])
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+
+  direction          MessageDirection
+  fromNumber         String
+  toNumber           String
+  body               String           @db.Text
+  status             MessageStatus    @default(QUEUED)
+  providerMessageSid String?
+  sentByUserId       String? // plain scalar, not a relation — see createdById convention in docs/02-database-erd.md; set only for OUTBOUND
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, leadId])
+  @@map("sms_messages")
+}
+
+model Email {
+  id             String        @id @default(cuid())
+  organizationId String
+  leadId         String?
+  lead           Lead?         @relation(fields: [leadId], references: [id])
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+
+  direction         MessageDirection
+  fromAddress       String
+  toAddress         String
+  subject           String?
+  bodyHtml          String?          @db.Text
+  status            MessageStatus    @default(QUEUED)
+  providerMessageId String?
+  sentByUserId      String? // plain scalar, not a relation — see createdById convention in docs/02-database-erd.md; set only for OUTBOUND
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, leadId])
+  @@map("emails")
+}
+
+// Compliance: DNC / opt-out state lives per phone/email (see PhoneNumber.isDncListed,
+// PhoneNumber.smsOptedOut, EmailAddress.unsubscribed) rather than a separate table, so every
+// send-path check is a single row read next to the destination it's sending to.
+model ComplianceEvent {
+  id             String              @id @default(cuid())
+  organizationId String
+  contactId      String?
+  channel        ConversationChannel
+  eventType      String // e.g. "DNC_REQUESTED", "SMS_STOP", "EMAIL_UNSUBSCRIBE"
+  source         String? // "inbound_keyword", "manual", "provider_webhook"
+  createdAt      DateTime            @default(now())
+
+  @@index([organizationId, contactId])
+  @@map("compliance_events")
+}
+
+// =========================================================================================
+// 7. AUTOMATIONS / WEBHOOKS — Phase 6
+// =========================================================================================
+
+enum AutomationTriggerType {
+  LEAD_CREATED
+  LEAD_UPDATED
+  STAGE_CHANGED
+  TAG_ADDED
+  FORM_SUBMITTED
+  INCOMING_CALL
+  MISSED_CALL
+  SMS_RECEIVED
+  EMAIL_RECEIVED
+  APPOINTMENT_SCHEDULED
+  TASK_COMPLETED
+  CONTRACT_SIGNED
+  DATE_REACHED
+}
+
+model Automation {
+  id             String                @id @default(cuid())
+  organizationId String
+  name           String
+  triggerType    AutomationTriggerType
+  triggerConfig  Json?
+  isActive       Boolean               @default(false)
+  createdById    String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  steps AutomationStep[]
+
+  @@index([organizationId])
+  @@map("automations")
+}
+
+model AutomationStep {
+  id            String     @id @default(cuid())
+  automationId  String
+  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  order         Int
+  actionType    String // "SEND_SMS" | "SEND_EMAIL" | "CREATE_TASK" | "CHANGE_STAGE" | ... (see docs/06)
+  actionConfig  Json
+  conditionJson Json?
+
+  @@index([automationId, order])
+  @@map("automation_steps")
+}
+
+model Webhook {
+  id             String   @id @default(cuid())
+  organizationId String
+  url            String
+  secret         String // used to sign outbound payloads (HMAC) — see security checklist
+  event          String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("webhooks")
+}
+
+// =========================================================================================
+// 8. BUYERS, OFFERS, CONTRACTS, DEALS, DOCUMENTS — Phase 7
+// =========================================================================================
+
+enum BuyerStrategy {
+  FLIP
+  RENTAL
+  WHOLESALE
+  BRRRR
+  OTHER
+}
+
+model Buyer {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String       @unique
+  contact        Contact      @relation(fields: [contactId], references: [id])
+
+  companyName       String?
+  markets           String[]
+  zipCodes          String[]
+  propertyTypes     PropertyType[]
+  minPrice          Decimal?       @db.Decimal(12, 2)
+  maxPrice          Decimal?       @db.Decimal(12, 2)
+  minBedrooms       Int?
+  maxRehabBudget    Decimal?       @db.Decimal(12, 2)
+  strategy          BuyerStrategy?
+  isCashBuyer       Boolean        @default(false)
+  proofOfFundsDocId String?
+  lastPurchaseAt    DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  deals Deal[]
+
+  @@index([organizationId])
+  @@map("buyers")
+}
+
+enum OfferStatus {
+  DRAFT
+  SENT
+  COUNTERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model Offer {
+  id             String      @id @default(cuid())
+  organizationId String
+  leadId         String
+  lead           Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  amount         Decimal     @db.Decimal(12, 2)
+  status         OfferStatus @default(DRAFT)
+  sentAt         DateTime?
+  respondedAt    DateTime?
+  notes          String?     @db.Text
+  createdById    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  contract Contract?
+
+  @@index([organizationId, leadId])
+  @@map("offers")
+}
+
+enum ContractStatus {
+  DRAFT
+  SENT
+  SIGNED
+  VOIDED
+}
+
+model Contract {
+  id             String         @id @default(cuid())
+  organizationId String
+  offerId        String         @unique
+  offer          Offer          @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  status         ContractStatus @default(DRAFT)
+  documentId     String?
+  signedAt       DateTime?
+  closingDate    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  deal Deal?
+
+  @@map("contracts")
+}
+
+enum DealStage {
+  UNDER_CONTRACT
+  DUE_DILIGENCE
+  DISPOSITIONS_AVAILABLE
+  DISPOSITIONS_BUYER_OUTREACH
+  DISPOSITIONS_OFFERS_RECEIVED
+  ASSIGNMENT_CONTRACT
+  CLOSING
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+model Deal {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String       @unique
+  lead           Lead         @relation(fields: [leadId], references: [id])
+  propertyId     String?
+  property       Property?    @relation(fields: [propertyId], references: [id])
+  contractId     String?      @unique
+  contract       Contract?    @relation(fields: [contractId], references: [id])
+  buyerId        String?
+  buyer          Buyer?       @relation(fields: [buyerId], references: [id])
+
+  ownerUserId String?
+  ownerUser   User?   @relation("DealOwnerUser", fields: [ownerUserId], references: [id])
+
+  stage         DealStage @default(UNDER_CONTRACT)
+  purchasePrice Decimal?  @db.Decimal(12, 2)
+  salePrice     Decimal?  @db.Decimal(12, 2)
+  assignmentFee Decimal?  @db.Decimal(12, 2)
+  closingDate   DateTime?
+  closedAt      DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  notes             Note[]
+  documents         Document[]
+  transactions      Transaction[]
+  customFieldValues CustomFieldValue[]
+
+  @@index([organizationId, stage])
+  @@map("deals")
+}
+
+model Vendor {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  category       String? // title company, contractor, attorney, etc.
+  phone          String?
+  email          String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("vendors")
+}
+
+model MarketingCost {
+  id             String    @id @default(cuid())
+  organizationId String
+  campaignId     String?
+  campaign       Campaign? @relation(fields: [campaignId], references: [id])
+  description    String
+  amount         Decimal   @db.Decimal(12, 2)
+  incurredOn     DateTime
+  createdById    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, incurredOn])
+  @@map("marketing_costs")
+}
+
+enum TransactionType {
+  ACQUISITION_COST
+  DISPOSITION_PROCEEDS
+  ASSIGNMENT_FEE
+  REPAIR_COST
+  CLOSING_COST
+  OTHER
+}
+
+model Transaction {
+  id             String          @id @default(cuid())
+  organizationId String
+  dealId         String
+  deal           Deal            @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  type           TransactionType
+  amount         Decimal         @db.Decimal(12, 2)
+  occurredOn     DateTime
+  createdAt      DateTime        @default(now())
+
+  @@index([organizationId, dealId])
+  @@map("transactions")
+}
+
+enum DocumentCategory {
+  PURCHASE_AGREEMENT
+  AUTHORIZATION
+  LOI
+  SHORT_SALE_DOCS
+  PROBATE_DOCS
+  FORECLOSURE_DOCS
+  TAX_DOCS
+  SURPLUS_AGREEMENT
+  CLOSING_STATEMENT
+  PROOF_OF_FUNDS
+  PHOTO
+  OTHER
+}
+
+model Document {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?        @relation(fields: [leadId], references: [id])
+  propertyId     String?
+  property       Property?    @relation(fields: [propertyId], references: [id])
+  dealId         String?
+  deal           Deal?        @relation(fields: [dealId], references: [id])
+
+  category   DocumentCategory @default(OTHER)
+  fileName   String
+  storageKey String // object-storage key — see src/lib/storage.ts
+  mimeType   String?
+  sizeBytes  Int?
+  version    Int              @default(1)
+
+  uploadedByUserId String?
+  uploadedByUser   User?   @relation("DocumentUploadedByUser", fields: [uploadedByUserId], references: [id])
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([organizationId, leadId])
+  @@index([organizationId, dealId])
+  @@map("documents")
+}
+
+// =========================================================================================
+// 9. SPECIALIZED REAL-ESTATE MODULES — Phase 9
+// =========================================================================================
+
+enum ForeclosureStatus {
+  PRE_FORECLOSURE
+  NOTICE_OF_DEFAULT
+  LIS_PENDENS
+  AUCTION_SCHEDULED
+  BANK_OWNED
+  RESOLVED
+}
+
+model Foreclosure {
+  id             String            @id @default(cuid())
+  organizationId String
+  propertyId     String            @unique
+  property       Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  status         ForeclosureStatus @default(PRE_FORECLOSURE)
+  defaultAmount  Decimal?          @db.Decimal(12, 2)
+  auctionDate    DateTime?
+  trusteeName    String?
+  caseNumber     String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@map("foreclosures")
+}
+
+enum TaxSaleStatus {
+  UPCOMING
+  SOLD
+  REDEEMED
+  SURPLUS_AVAILABLE
+}
+
+model TaxSale {
+  id             String        @id @default(cuid())
+  organizationId String
+  propertyId     String        @unique
+  property       Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  status         TaxSaleStatus @default(UPCOMING)
+  saleDate       DateTime?
+  saleAmount     Decimal?      @db.Decimal(12, 2)
+  overbidAmount  Decimal?      @db.Decimal(12, 2)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  surplusClaims TaxSurplusClaim[]
+
+  @@index([organizationId])
+  @@map("tax_sales")
+}
+
+enum SurplusClaimStatus {
+  NEW
+  FUNDS_VERIFICATION_NEEDED
+  FUNDS_AVAILABLE
+  OWNER_RESEARCH
+  HEIR_RESEARCH
+  AGREEMENT_SENT
+  AGREEMENT_SIGNED
+  CLAIM_PREPARATION
+  CLAIM_SUBMITTED
+  COUNTY_REVIEW
+  PAYMENT_PENDING
+  PAID
+  CLOSED
+}
+
+model TaxSurplusClaim {
+  id               String             @id @default(cuid())
+  organizationId   String
+  taxSaleId        String
+  taxSale          TaxSale            @relation(fields: [taxSaleId], references: [id], onDelete: Cascade)
+  status           SurplusClaimStatus @default(NEW)
+  surplusAmount    Decimal?           @db.Decimal(12, 2)
+  claimSubmittedAt DateTime?
+  paidAt           DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([organizationId])
+  @@map("tax_surplus_claims")
+}
+
+enum SurplusClaimStatusMortgage {
+  NEW
+  RESEARCH
+  AGREEMENT_SENT
+  AGREEMENT_SIGNED
+  CLAIM_SUBMITTED
+  PAID
+  CLOSED
+}
+
+model MortgageSurplusClaim {
+  id             String                     @id @default(cuid())
+  organizationId String
+  propertyId     String
+  status         SurplusClaimStatusMortgage @default(NEW)
+  surplusAmount  Decimal?                   @db.Decimal(12, 2)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  @@index([organizationId, propertyId])
+  @@map("mortgage_surplus_claims")
+}
+
+enum ProbateStatus {
+  NEW
+  ESTATE_RESEARCH
+  PR_LOCATED
+  HEIR_RESEARCH
+  CONTACT_ATTEMPTED
+  CONTACTED
+  APPOINTMENT
+  OFFER
+  NEGOTIATION
+  CONTRACT
+  CLOSING
+}
+
+model ProbateCase {
+  id                         String        @id @default(cuid())
+  organizationId             String
+  propertyId                 String        @unique
+  property                   Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  status                     ProbateStatus @default(NEW)
+  caseNumber                 String?
+  county                     String?
+  filedDate                  DateTime?
+  personalRepresentativeName String?
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@map("probate_cases")
+}
+
+enum ShortSaleStatus {
+  NEW
+  SELLER_CONTACTED
+  APPLICATION_NEEDED
+  APPLICATION_RECEIVED
+  AUTHORIZATION_RECEIVED
+  FINANCIAL_PACKAGE
+  OFFER_PREPARED
+  SUBMITTED_TO_LENDER
+  LENDER_REVIEW
+  BPO_APPRAISAL
+  NEGOTIATION
+  APPROVAL
+  CLOSING
+  CLOSED
+}
+
+model ShortSale {
+  id             String          @id @default(cuid())
+  organizationId String
+  propertyId     String          @unique
+  property       Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  status         ShortSaleStatus @default(NEW)
+  lenderName     String?
+  loanNumber     String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([organizationId])
+  @@map("short_sales")
+}
+
+model Lien {
+  id             String    @id @default(cuid())
+  organizationId String
+  propertyId     String
+  property       Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  holderName     String
+  amount         Decimal?  @db.Decimal(12, 2)
+  filedDate      DateTime?
+  lienType       String?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, propertyId])
+  @@map("liens")
+}
+
+model Mortgage {
+  id              String    @id @default(cuid())
+  organizationId  String
+  propertyId      String
+  property        Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  lenderName      String
+  originalAmount  Decimal?  @db.Decimal(12, 2)
+  currentBalance  Decimal?  @db.Decimal(12, 2)
+  originationDate DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([organizationId, propertyId])
+  @@map("mortgages")
+}
+
+model Auction {
+  id             String   @id @default(cuid())
+  organizationId String
+  propertyId     String
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  auctionDate    DateTime
+  location       String?
+  openingBid     Decimal? @db.Decimal(12, 2)
+  result         String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, propertyId])
+  @@map("auctions")
+}
+
+enum CreativeFinanceType {
+  SUBJECT_TO
+  SELLER_FINANCE
+  LEASE_OPTION
+  WRAP
+  NOVATION
+}
+
+model CreativeFinanceDeal {
+  id             String              @id @default(cuid())
+  organizationId String
+  propertyId     String              @unique
+  property       Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  structureType  CreativeFinanceType
+  terms          String?             @db.Text
+  monthlyPayment Decimal?            @db.Decimal(12, 2)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([organizationId])
+  @@map("creative_finance_deals")
+}
+
+model PropertyValuation {
+  id             String   @id @default(cuid())
+  organizationId String
+  propertyId     String
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  source         String // "manual" | "avm" | "agent_bpo" (see docs/06-integrations.md)
+  value          Decimal  @db.Decimal(12, 2)
+  asOfDate       DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, propertyId])
+  @@map("property_valuations")
+}
+
+model ComparableSale {
+  id             String   @id @default(cuid())
+  organizationId String
+  propertyId     String
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  addressLine1   String
+  soldPrice      Decimal  @db.Decimal(12, 2)
+  soldDate       DateTime
+  distanceMiles  Float?
+  squareFeet     Int?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, propertyId])
+  @@map("comparable_sales")
+}
+
+model RepairEstimate {
+  id             String   @id @default(cuid())
+  organizationId String
+  propertyId     String
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  category       String // roof, HVAC, kitchen, etc.
+  estimatedCost  Decimal  @db.Decimal(12, 2)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, propertyId])
+  @@map("repair_estimates")
+}
