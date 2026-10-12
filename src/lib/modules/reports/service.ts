@@ -152,3 +152,72 @@ export async function getFinancialsReport(organizationId: string, range: DateRan
     closedDeals,
   };
 }
+
+/** Median of a non-empty list; null for an empty one. */
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * Speed to lead: minutes from a lead's creation to the first OUTBOUND call, SMS, or email logged
+ * against it. Inbound messages don't count — the seller reaching out again isn't us responding.
+ * Leads with no outbound touch yet are reported separately as "not yet contacted".
+ */
+export async function getSpeedToLeadReport(organizationId: string, range: DateRange) {
+  const leads = await prisma.lead.findMany({
+    where: { organizationId, deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
+    select: {
+      id: true,
+      createdAt: true,
+      contact: { select: { firstName: true, lastName: true } },
+      assignedUser: { select: { name: true } },
+      calls: { where: { direction: "OUTBOUND" }, select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 },
+      smsMessages: { where: { direction: "OUTBOUND" }, select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 },
+      emails: { where: { direction: "OUTBOUND" }, select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const responseMinutes: number[] = [];
+  const byUser = new Map<string, number[]>();
+  const notContacted: { id: string; name: string; assignee: string; createdAt: Date }[] = [];
+
+  for (const lead of leads) {
+    const touches = [lead.calls[0], lead.smsMessages[0], lead.emails[0]]
+      .filter((t): t is { createdAt: Date } => !!t && t.createdAt >= lead.createdAt)
+      .map((t) => t.createdAt.getTime());
+    const assignee = lead.assignedUser?.name ?? "(Unassigned)";
+    if (touches.length === 0) {
+      notContacted.push({
+        id: lead.id,
+        name: `${lead.contact.firstName} ${lead.contact.lastName}`,
+        assignee,
+        createdAt: lead.createdAt,
+      });
+      continue;
+    }
+    const minutes = (Math.min(...touches) - lead.createdAt.getTime()) / 60000;
+    responseMinutes.push(minutes);
+    byUser.set(assignee, [...(byUser.get(assignee) ?? []), minutes]);
+  }
+
+  const pctWithin = (limitMinutes: number) =>
+    leads.length > 0 ? (responseMinutes.filter((m) => m <= limitMinutes).length / leads.length) * 100 : null;
+
+  return {
+    totalLeads: leads.length,
+    contactedLeads: responseMinutes.length,
+    medianMinutes: median(responseMinutes),
+    averageMinutes: responseMinutes.length > 0 ? responseMinutes.reduce((a, b) => a + b, 0) / responseMinutes.length : null,
+    pctWithin5Minutes: pctWithin(5),
+    pctWithin1Hour: pctWithin(60),
+    byUser: [...byUser.entries()]
+      .map(([label, mins]) => ({ label, contacted: mins.length, medianMinutes: median(mins) }))
+      .sort((a, b) => (a.medianMinutes ?? Infinity) - (b.medianMinutes ?? Infinity)),
+    notContacted: notContacted.slice(0, 25),
+    notContactedCount: notContacted.length,
+  };
+}

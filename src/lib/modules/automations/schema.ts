@@ -2,9 +2,9 @@ import { z } from "zod";
 
 /**
  * Only the triggers that fire off real, already-wired mutations are offered — source spec §11
- * also lists Form Submitted, Incoming/Missed Call, and Date Reached, which need infrastructure
- * that doesn't exist yet (public forms, call-answer detection, a scheduler). Contract Signed
- * joined once Phase 7 built Contracts. The Prisma enum still carries every trigger so wiring one
+ * also lists Incoming/Missed Call and Date Reached, which need infrastructure that doesn't exist
+ * yet (call-answer detection, a scheduler). Contract Signed joined once Phase 7 built Contracts;
+ * Form Submitted joined once Phase 10 built public lead-capture forms. The Prisma enum still carries every trigger so wiring one
  * later is additive, not a migration.
  */
 export const supportedTriggerTypeEnum = z.enum([
@@ -17,6 +17,7 @@ export const supportedTriggerTypeEnum = z.enum([
   "APPOINTMENT_SCHEDULED",
   "TASK_COMPLETED",
   "CONTRACT_SIGNED",
+  "FORM_SUBMITTED",
 ]);
 export type SupportedTriggerType = z.infer<typeof supportedTriggerTypeEnum>;
 
@@ -30,6 +31,7 @@ export const TRIGGER_LABELS: Record<SupportedTriggerType, string> = {
   APPOINTMENT_SCHEDULED: "Appointment Scheduled",
   TASK_COMPLETED: "Task Completed",
   CONTRACT_SIGNED: "Contract Signed",
+  FORM_SUBMITTED: "Web Form Submitted",
 };
 
 export const actionTypeEnum = z.enum([

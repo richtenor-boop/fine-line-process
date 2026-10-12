@@ -27,12 +27,13 @@ import { QuickTaskForm } from "@/components/domain/quick-task-form";
 import { QuickAppointmentForm } from "./quick-appointment-form";
 import { EnrollCampaignForm } from "./enroll-campaign-form";
 import { AiInsightsCard } from "./ai-insights-card";
+import { listLeadFormSubmissions } from "@/lib/modules/lead-forms/service";
 
 export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
   const { id } = await params;
   const session = await requirePermission("leads:view");
 
-  const [lead, users, customFieldDefinitions, canAssign, canMessage, canManageCampaigns, tasks, appointments, timeline, documents] =
+  const [lead, users, customFieldDefinitions, canAssign, canMessage, canManageCampaigns, tasks, appointments, timeline, documents, formSubmissions] =
     await Promise.all([
       getLead(session.user.organizationId, id),
       listUsers(session.user.organizationId),
@@ -44,6 +45,7 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
       listAppointmentsForLead(session.user.organizationId, id),
       getLeadActivityTimeline(session.user.organizationId, id),
       listDocuments(session.user.organizationId, { leadId: id }),
+      listLeadFormSubmissions(session.user.organizationId, id),
     ]);
   if (!lead) notFound();
 
@@ -146,6 +148,26 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
             initialReason={lead.aiScoreReason}
             isLive={getAiProvider().isLive}
           />
+
+          {formSubmissions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Web form submissions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-3">
+                  {formSubmissions.map((s) => (
+                    <li key={s.id} className="text-sm">
+                      <p className="text-xs text-muted">
+                        {s.form.name} · {s.createdAt.toLocaleString()}
+                      </p>
+                      <p className="whitespace-pre-wrap text-foreground">{s.message || "No message."}</p>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requirePermission } from "@/lib/rbac";
+import { requirePermission, currentUserHasPermission } from "@/lib/rbac";
 import { getProperty } from "@/lib/modules/properties/service";
 import { listCustomFieldDefinitions } from "@/lib/modules/custom-fields/service";
 import { listTasks } from "@/lib/modules/tasks/service";
 import { listDocuments } from "@/lib/modules/documents/service";
 import { findMatchingBuyers } from "@/lib/modules/buyers/service";
 import { getPropertyDetails } from "@/lib/modules/property-details/service";
+import { getDealAnalysis } from "@/lib/modules/deal-analyzer/service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NotesSection } from "@/components/domain/notes-section";
 import { CustomFieldsSection } from "@/components/domain/custom-fields-section";
@@ -14,6 +15,7 @@ import { TaskList } from "@/components/domain/task-list";
 import { QuickTaskForm } from "@/components/domain/quick-task-form";
 import { DocumentsSection } from "@/components/domain/documents-section";
 import { PropertyDetailsSection } from "@/components/domain/property-details-section";
+import { DealAnalyzerSection } from "@/components/domain/deal-analyzer-section";
 import { removeOwnerAction } from "./actions";
 import { AddOwnerForm } from "./add-owner-form";
 import { Button } from "@/components/ui/button";
@@ -22,13 +24,15 @@ export default async function PropertyDetailPage({ params }: PageProps<"/propert
   const { id } = await params;
   const session = await requirePermission("properties:view");
 
-  const [property, customFieldDefinitions, tasks, documents, matchingBuyers, propertyDetails] = await Promise.all([
+  const [property, customFieldDefinitions, tasks, documents, matchingBuyers, propertyDetails, dealAnalysis, canEditProperty] = await Promise.all([
     getProperty(session.user.organizationId, id),
     listCustomFieldDefinitions(session.user.organizationId, "PROPERTY"),
     listTasks(session.user.organizationId, "team", session.user.id, { propertyId: id }),
     listDocuments(session.user.organizationId, { propertyId: id }),
     findMatchingBuyers(session.user.organizationId, id),
     getPropertyDetails(session.user.organizationId, id),
+    getDealAnalysis(session.user.organizationId, id),
+    currentUserHasPermission("properties:edit"),
   ]);
   if (!property) notFound();
 
@@ -79,6 +83,15 @@ export default async function PropertyDetailPage({ params }: PageProps<"/propert
               </div>
             </CardContent>
           </Card>
+
+          {dealAnalysis && (
+            <DealAnalyzerSection
+              propertyId={property.id}
+              initialInputs={dealAnalysis.inputs}
+              saved={dealAnalysis.saved}
+              canEdit={canEditProperty}
+            />
+          )}
 
           <Card>
             <CardHeader>

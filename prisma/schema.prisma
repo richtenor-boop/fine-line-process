@@ -55,6 +55,7 @@ model Organization {
   auditLogs     AuditLog[]
   customFields  CustomFieldDefinition[]
   notifications Notification[]
+  leadForms     LeadForm[]
 
   @@map("organizations")
 }
@@ -398,6 +399,7 @@ model Property {
   shortSale           ShortSale?
   auctions            Auction[]
   creativeFinanceDeal CreativeFinanceDeal?
+  dealAnalysis        DealAnalysis?
   customFieldValues   CustomFieldValue[]
 
   @@index([organizationId])
@@ -720,6 +722,7 @@ model Lead {
   customFieldValues   CustomFieldValue[]
   campaignEnrollments CampaignEnrollment[]
   stageHistory        LeadStageHistory[]
+  formSubmissions     LeadFormSubmission[]
 
   @@index([organizationId])
   @@index([organizationId, stageId])
@@ -1573,4 +1576,78 @@ model RepairEstimate {
 
   @@index([organizationId, propertyId])
   @@map("repair_estimates")
+}
+
+// =========================================================================================
+// 10. DEAL ANALYZER + LEAD CAPTURE FORMS — Phase 10
+// =========================================================================================
+
+/// One saved underwriting worksheet per property. Inputs only — every derived figure (MAO, flip
+/// profit, cap rate...) is computed on read by src/lib/modules/deal-analyzer/calc.ts so a formula
+/// fix never leaves stale numbers in the database.
+model DealAnalysis {
+  id             String   @id @default(cuid())
+  organizationId String
+  propertyId     String   @unique
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  arv                Decimal? @db.Decimal(12, 2)
+  repairCost         Decimal? @db.Decimal(12, 2)
+  purchasePrice      Decimal? @db.Decimal(12, 2)
+  maoPercent         Decimal  @default(70) @db.Decimal(5, 2)
+  assignmentFee      Decimal? @db.Decimal(12, 2)
+  closingCostPercent Decimal  @default(2) @db.Decimal(5, 2)
+  sellingCostPercent Decimal  @default(8) @db.Decimal(5, 2)
+  holdingMonths      Int      @default(6)
+  monthlyHoldingCost Decimal? @db.Decimal(12, 2)
+  monthlyRent        Decimal? @db.Decimal(12, 2)
+  monthlyExpenses    Decimal? @db.Decimal(12, 2)
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("deal_analyses")
+}
+
+/// A public, unauthenticated seller intake form ("We Buy Houses" page / website embed). Reached at
+/// /f/<publicToken>; the token is random and unguessable, never the internal id.
+model LeadForm {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  publicToken     String       @unique
+  headline        String?
+  leadSourceName  String
+  assignedUserId  String?
+  thankYouMessage String?      @db.Text
+  isActive        Boolean      @default(true)
+  createdById     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  submissions LeadFormSubmission[]
+
+  @@index([organizationId])
+  @@map("lead_forms")
+}
+
+model LeadFormSubmission {
+  id             String   @id @default(cuid())
+  organizationId String
+  formId         String
+  form           LeadForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  message        String?  @db.Text
+  /// SHA-256 of the submitter IP + AUTH_SECRET — enough to rate-limit, never the raw address.
+  ipHash         String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([formId, createdAt])
+  @@index([ipHash, createdAt])
+  @@map("lead_form_submissions")
 }

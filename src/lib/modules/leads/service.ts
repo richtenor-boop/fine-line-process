@@ -14,7 +14,8 @@ async function getDefaultPipelineStage(organizationId: string) {
   return { pipelineId: pipeline.id, stageId: pipeline.stages[0].id };
 }
 
-export async function createLead(organizationId: string, input: CreateLeadInput, createdById: string) {
+/** `createdById` is null for leads created without a signed-in user (public lead-capture forms). */
+export async function createLead(organizationId: string, input: CreateLeadInput, createdById: string | null) {
   const { pipelineId, stageId } = await getDefaultPipelineStage(organizationId);
 
   return prisma.$transaction(async (tx) => {

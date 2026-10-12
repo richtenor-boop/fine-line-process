@@ -11,6 +11,7 @@ import {
   getClosedDealsReport,
   getConversionRates,
   getFinancialsReport,
+  getSpeedToLeadReport,
 } from "@/lib/modules/reports/service";
 import { listMarketingCosts } from "@/lib/modules/marketing-costs/service";
 import { deleteMarketingCostAction } from "@/lib/modules/marketing-costs/actions";
@@ -31,6 +32,14 @@ function fmtMoney(n: number | null): string {
 function fmtPct(n: number | null): string {
   if (n === null) return "—";
   return `${n.toFixed(1)}%`;
+}
+
+function fmtDuration(minutes: number | null): string {
+  if (minutes === null) return "—";
+  if (minutes < 1) return "< 1 min";
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  if (minutes < 60 * 48) return `${(minutes / 60).toFixed(1)} hr`;
+  return `${(minutes / 1440).toFixed(1)} days`;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -214,6 +223,76 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/r
             <Stat label="Contract → Closed" value={fmtPct(c.contractToClosed)} />
           </CardContent>
         </Card>
+      );
+      break;
+    }
+    case "speed-to-lead": {
+      const r = await getSpeedToLeadReport(orgId, range);
+      body = (
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="grid grid-cols-2 gap-6 pt-5 sm:grid-cols-3">
+              <Stat label="Median response" value={fmtDuration(r.medianMinutes)} />
+              <Stat label="Average response" value={fmtDuration(r.averageMinutes)} />
+              <Stat label="Contacted" value={`${r.contactedLeads} / ${r.totalLeads}`} />
+              <Stat label="Within 5 minutes" value={fmtPct(r.pctWithin5Minutes)} />
+              <Stat label="Within 1 hour" value={fmtPct(r.pctWithin1Hour)} />
+              <Stat label="Not yet contacted" value={String(r.notContactedCount)} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                  <tr>
+                    <th className="px-5 py-2 font-medium">Assignee</th>
+                    <th className="px-5 py-2 font-medium">Leads contacted</th>
+                    <th className="px-5 py-2 font-medium">Median response</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.byUser.map((u) => (
+                    <tr key={u.label} className="border-b border-border last:border-0">
+                      <td className="px-5 py-3 text-foreground">{u.label}</td>
+                      <td className="px-5 py-3 text-muted">{u.contacted}</td>
+                      <td className="px-5 py-3 text-muted">{fmtDuration(u.medianMinutes)}</td>
+                    </tr>
+                  ))}
+                  {r.byUser.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-5 py-6 text-center text-muted">
+                        No contacted leads in this range.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          {r.notContacted.length > 0 && (
+            <Card>
+              <CardContent className="space-y-2 pt-5">
+                <p className="text-sm font-medium text-foreground">
+                  Waiting on first contact{r.notContactedCount > r.notContacted.length && ` (newest ${r.notContacted.length})`}
+                </p>
+                <ul className="divide-y divide-border">
+                  {r.notContacted.map((l) => (
+                    <li key={l.id} className="flex items-center justify-between py-2 text-sm">
+                      <Link href={`/leads/${l.id}`} className="text-primary hover:underline">
+                        {l.name}
+                      </Link>
+                      <span className="text-muted">
+                        {l.assignee} · {l.createdAt.toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       );
       break;
     }

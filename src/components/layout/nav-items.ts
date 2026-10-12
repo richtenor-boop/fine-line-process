@@ -36,4 +36,5 @@ export const SETTINGS_NAV_ITEMS: NavItem[] = [
   { label: "Tags", href: "/settings/tags", permission: "organization:manage", phase: 2 },
   { label: "Integrations", href: "/settings/integrations", permission: "integrations:manage", phase: 5 },
   { label: "Webhooks", href: "/settings/webhooks", permission: "webhooks:manage", phase: 6 },
+  { label: "Lead Forms", href: "/settings/lead-forms", permission: "campaigns:manage", phase: 10 },
 ];

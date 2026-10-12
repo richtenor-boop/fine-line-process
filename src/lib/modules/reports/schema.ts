@@ -7,6 +7,7 @@ export const REPORT_DEFINITIONS = [
   { key: "contracts", label: "Contracts", description: "Contracts created, grouped by status." },
   { key: "closed-deals", label: "Closed Deals", description: "Deals that closed (won or lost) in the date range." },
   { key: "conversion-rates", label: "Conversion Rates", description: "Lead → Appointment → Offer → Contract → Closed funnel." },
+  { key: "speed-to-lead", label: "Speed to Lead", description: "How fast new leads get their first outbound call, text, or email." },
   { key: "financials", label: "Financials", description: "Marketing spend, cost per lead/contract/deal, revenue, profit, pipeline value." },
 ] as const;
 
