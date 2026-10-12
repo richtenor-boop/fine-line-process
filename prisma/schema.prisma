@@ -1719,3 +1719,20 @@ model GeneratedContract {
   @@index([organizationId, propertyId])
   @@map("generated_contracts")
 }
+
+// =========================================================================================
+// 12. DATABASE FILE STORAGE — durable uploads on hosts without a persistent disk (Vercel)
+// =========================================================================================
+
+/// File bytes for the "database" storage adapter (src/lib/storage.ts). Used on serverless hosts,
+/// where the local-disk adapter would lose files; swap for S3-compatible storage at higher volume.
+model StoredFile {
+  key            String   @id
+  organizationId String
+  data           Bytes
+  sizeBytes      Int
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("stored_files")
+}

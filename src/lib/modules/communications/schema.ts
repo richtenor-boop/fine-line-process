@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { blankToUndefined } from "@/lib/zod-helpers";
 
 export const callDispositionEnum = z.enum([
   "INTERESTED",
@@ -15,7 +16,7 @@ export const logCallSchema = z.object({
   leadId: z.string().min(1),
   phoneNumberId: z.string().min(1, "Select which number was called"),
   direction: z.enum(["INBOUND", "OUTBOUND"]),
-  durationSeconds: z.coerce.number().int().min(0).optional(),
+  durationSeconds: blankToUndefined(z.coerce.number().int().min(0).optional()),
   disposition: callDispositionEnum.optional(),
   notes: z.string().max(2000).optional().or(z.literal("")),
 });

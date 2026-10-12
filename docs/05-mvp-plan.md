@@ -234,7 +234,7 @@ below is met for everything shipped in it.
    detail pages, backed by one shared service (`src/lib/modules/documents`). The only Route
    Handler this phase needed is `/api/documents/[id]` — a Server Action can't stream a binary
    download response, so serving bytes is the one legitimate exception to "everything is a Server
-   Action." A 20MB cap and sanitized storage keys guard against path traversal; there is no
+   Action." A 4MB cap (originally 20MB; lowered for Vercel's request-body limit) and sanitized storage keys guard against path traversal; there is no
    malware/content scanning (out of scope until a real need or provider exists).
 3. **Buyers** (`/buyers`): criteria (markets, ZIPs, property types, price range, min bedrooms, cash
    buyer status) plus a real matching function (`findMatchingBuyers`) that shows up directly on a

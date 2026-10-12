@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Document uploads go through a Server Action (default limit 1MB). 5MB leaves room for the
+    // 4MB file cap in documents/schema.ts plus multipart overhead, under Vercel's 4.5MB body limit.
+    serverActions: { bodySizeLimit: "5mb" },
+  },
   async headers() {
     return [
       // The CRM itself must never render inside another site's frame (clickjacking)...

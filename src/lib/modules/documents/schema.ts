@@ -30,7 +30,9 @@ export const DOCUMENT_CATEGORY_LABELS: Record<z.infer<typeof documentCategoryEnu
   OTHER: "Other",
 };
 
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
+// 4MB: Vercel rejects request bodies over 4.5MB, and Server Actions are capped at 5MB in
+// next.config.ts. Photos belong in a linked Dropbox/Drive folder (media links), not uploads.
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 export const uploadDocumentMetaSchema = z.object({
   category: documentCategoryEnum.default("OTHER"),

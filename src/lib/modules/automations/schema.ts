@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { blankToUndefined } from "@/lib/zod-helpers";
 
 /**
  * Only the triggers that fire off real, already-wired mutations are offered — source spec §11
@@ -97,7 +98,7 @@ export const addStepSchema = z.object({
   emailSubject: z.string().max(200).optional(),
   emailBody: z.string().max(20000).optional(),
   taskTitle: z.string().max(200).optional(),
-  taskDueInDays: z.coerce.number().int().min(0).optional(),
+  taskDueInDays: blankToUndefined(z.coerce.number().int().min(0).optional()),
   taskAssignedUserId: z.string().optional(),
   assignUserId: z.string().optional(),
   changeStageId: z.string().optional(),
@@ -106,8 +107,8 @@ export const addStepSchema = z.object({
   notificationBody: z.string().max(1000).optional(),
   notificationUserId: z.string().optional(),
   appointmentType: z.string().optional(),
-  appointmentDaysFromNow: z.coerce.number().int().min(0).optional(),
-  appointmentDurationMinutes: z.coerce.number().int().min(5).optional(),
+  appointmentDaysFromNow: blankToUndefined(z.coerce.number().int().min(0).optional()),
+  appointmentDurationMinutes: blankToUndefined(z.coerce.number().int().min(5).optional()),
   campaignId: z.string().optional(),
   webhookId: z.string().optional(),
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { blankToUndefined } from "@/lib/zod-helpers";
 
 export const contractTypeEnum = z.enum(["CASH", "NOVATION", "SUBJECT_TO"]);
 export type ContractType = z.infer<typeof contractTypeEnum>;
@@ -31,7 +32,7 @@ export const generateContractSchema = z
     closingDate: z.string().min(1, "Closing date is required"),
     inspectionDays: z.coerce.number().int().min(0).max(120),
     // Novation
-    marketingDays: z.coerce.number().int().min(0).max(730).optional(),
+    marketingDays: blankToUndefined(z.coerce.number().int().min(0).max(730).optional()),
     repairBudget: optionalMoney,
     // Subject-To
     lenderName: text(200).optional().or(z.literal("")),
