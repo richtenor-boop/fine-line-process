@@ -157,6 +157,9 @@ export async function listLeads(organizationId: string, filters: ListLeadsFilter
       property: true,
       stage: true,
       assignedUser: true,
+      // Latest notes + count power the Podio-style badge view on /leads.
+      notes: { select: { id: true, body: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 3 },
+      _count: { select: { notes: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 200,
@@ -209,4 +212,66 @@ export async function softDeleteLead(organizationId: string, leadId: string) {
 export async function countNewLeadsInLastDays(organizationId: string, days: number) {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return prisma.lead.count({ where: { organizationId, deletedAt: null, createdAt: { gte: since } } });
+}
+
+export type LeadActivityItem = {
+  id: string;
+  leadId: string;
+  at: Date;
+  kind: "note" | "stage" | "call" | "sms" | "email";
+  text: string;
+};
+
+/** Org-wide activity across a set of leads, newest first — the /leads "Activity" view. */
+export async function listRecentActivityForLeads(organizationId: string, leadIds: string[], limit = 60) {
+  if (leadIds.length === 0) return [];
+  const where = { organizationId, leadId: { in: leadIds } };
+  const [notes, stages, calls, sms, emails] = await Promise.all([
+    prisma.note.findMany({ where, include: { author: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: limit }),
+    prisma.leadStageHistory.findMany({
+      where: { leadId: { in: leadIds } },
+      orderBy: { changedAt: "desc" },
+      take: limit,
+    }),
+    prisma.call.findMany({ where, orderBy: { createdAt: "desc" }, take: limit }),
+    prisma.smsMessage.findMany({ where, orderBy: { createdAt: "desc" }, take: limit }),
+    prisma.email.findMany({ where, orderBy: { createdAt: "desc" }, take: limit }),
+  ]);
+  const stageIds = [...new Set(stages.map((h) => h.toStageId))];
+  const stageNames = new Map(
+    (await prisma.pipelineStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, name: true } })).map((st) => [st.id, st.name]),
+  );
+
+  const items: LeadActivityItem[] = [
+    ...notes.map((n) => ({ id: `n-${n.id}`, leadId: n.leadId!, at: n.createdAt, kind: "note" as const, text: `${n.author.name}: ${n.body}` })),
+    ...stages.map((h) => ({
+      id: `s-${h.id}`,
+      leadId: h.leadId,
+      at: h.changedAt,
+      kind: "stage" as const,
+      text: `Moved to ${stageNames.get(h.toStageId) ?? "a new stage"}`,
+    })),
+    ...calls.map((c) => ({
+      id: `c-${c.id}`,
+      leadId: c.leadId!,
+      at: c.createdAt,
+      kind: "call" as const,
+      text: `${c.direction === "OUTBOUND" ? "Outbound" : "Inbound"} call${c.disposition ? ` — ${c.disposition.replace(/_/g, " ").toLowerCase()}` : ""}`,
+    })),
+    ...sms.map((m) => ({
+      id: `t-${m.id}`,
+      leadId: m.leadId!,
+      at: m.createdAt,
+      kind: "sms" as const,
+      text: `${m.direction === "OUTBOUND" ? "Text sent" : "Text received"}: ${m.body}`,
+    })),
+    ...emails.map((e) => ({
+      id: `e-${e.id}`,
+      leadId: e.leadId!,
+      at: e.createdAt,
+      kind: "email" as const,
+      text: `${e.direction === "OUTBOUND" ? "Email sent" : "Email received"}${e.subject ? `: ${e.subject}` : ""}`,
+    })),
+  ];
+  return items.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit);
 }

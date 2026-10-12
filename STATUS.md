@@ -184,6 +184,16 @@ three most-cited capabilities that need no paid data provider.
 | Phone/tablet layout — slide-out menu below 1024px, single-column detail pages, sideways-scrolling tables | IMPLEMENTED — verified at 390px wide with no horizontal page scroll |
 | Skip tracing, list pulling/stacking, driving for dollars, automated valuations (RentCast etc.) | PLANNED — REQUIRES THIRD-PARTY CREDENTIALS and paid usage; not built without an approved provider |
 
+## Phase 11 — Podio-style Lead Views, Picture Links, Deal Evaluator, Contract Generator
+
+| Capability | Status |
+|---|---|
+| Leads list views — Badge (Podio-style cards: address, latest notes, stage, follow-up, value, creator, note count), Table, Activity (org-wide feed), Calendar (follow-ups: overdue / today / next 7 days / later), Card → pipeline board | IMPLEMENTED — `?view=` on `/leads`; Badge is the default |
+| Picture & media links on properties and leads (Dropbox, Google Drive/Photos, OneDrive, etc.) | IMPLEMENTED — http(s) links only; uploaded files stay in Documents |
+| Deal evaluator — ranks Cash / Novation / Subject-To with fit, suggested offer, profit or cash flow, cash to close, and reasons | IMPLEMENTED — rule-of-thumb suggestions, labeled as such; needs ARV (cash/novation) or loan balance + payment (Subject-To) |
+| Contract generator — Cash Purchase, Novation, and Subject-To agreements prefilled from the property, owners, and analyzer; printable (Print / Save as PDF) and saved to Documents | IMPLEMENTED — template drafts with a prominent attorney-review notice; not attorney-drafted or state-specific |
+| E-signature for generated contracts | PLANNED — REQUIRES THIRD-PARTY CREDENTIALS (DocuSign or similar) |
+
 ## Third-party integrations
 
 | Integration | Status |

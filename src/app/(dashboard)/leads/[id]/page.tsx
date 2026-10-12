@@ -28,12 +28,14 @@ import { QuickAppointmentForm } from "./quick-appointment-form";
 import { EnrollCampaignForm } from "./enroll-campaign-form";
 import { AiInsightsCard } from "./ai-insights-card";
 import { listLeadFormSubmissions } from "@/lib/modules/lead-forms/service";
+import { listMediaLinks } from "@/lib/modules/media-links/service";
+import { MediaLinksSection } from "@/components/domain/media-links-section";
 
 export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
   const { id } = await params;
   const session = await requirePermission("leads:view");
 
-  const [lead, users, customFieldDefinitions, canAssign, canMessage, canManageCampaigns, tasks, appointments, timeline, documents, formSubmissions] =
+  const [lead, users, customFieldDefinitions, canAssign, canMessage, canManageCampaigns, tasks, appointments, timeline, documents, formSubmissions, mediaLinks, canEditLead] =
     await Promise.all([
       getLead(session.user.organizationId, id),
       listUsers(session.user.organizationId),
@@ -46,6 +48,8 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
       getLeadActivityTimeline(session.user.organizationId, id),
       listDocuments(session.user.organizationId, { leadId: id }),
       listLeadFormSubmissions(session.user.organizationId, id),
+      listMediaLinks(session.user.organizationId, { leadId: id }),
+      currentUserHasPermission("leads:edit"),
     ]);
   if (!lead) notFound();
 
@@ -133,6 +137,8 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
           </Card>
 
           <DealSection organizationId={session.user.organizationId} leadId={lead.id} />
+
+          <MediaLinksSection links={mediaLinks} leadId={lead.id} canEdit={canEditLead} />
 
           <DocumentsSection documents={documents} leadId={lead.id} />
 

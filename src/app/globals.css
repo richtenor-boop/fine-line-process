@@ -49,3 +49,29 @@ body {
 main :where(.p-0):has(> table) {
   overflow-x: auto;
 }
+
+/* Printing a contract (or any page): drop the app chrome and let the content flow across pages. */
+@media print {
+  nav,
+  header,
+  .no-print {
+    display: none !important;
+  }
+  .h-screen {
+    height: auto !important;
+  }
+  .overflow-hidden,
+  .overflow-y-auto {
+    overflow: visible !important;
+  }
+  body,
+  main {
+    background: #fff !important;
+    padding: 0 !important;
+  }
+  .contract-sheet {
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+}

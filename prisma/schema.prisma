@@ -400,6 +400,8 @@ model Property {
   auctions            Auction[]
   creativeFinanceDeal CreativeFinanceDeal?
   dealAnalysis        DealAnalysis?
+  mediaLinks          MediaLink[]
+  generatedContracts  GeneratedContract[]
   customFieldValues   CustomFieldValue[]
 
   @@index([organizationId])
@@ -723,6 +725,8 @@ model Lead {
   campaignEnrollments CampaignEnrollment[]
   stageHistory        LeadStageHistory[]
   formSubmissions     LeadFormSubmission[]
+  mediaLinks          MediaLink[]
+  generatedContracts  GeneratedContract[]
 
   @@index([organizationId])
   @@index([organizationId, stageId])
@@ -1591,17 +1595,23 @@ model DealAnalysis {
   propertyId     String   @unique
   property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
-  arv                Decimal? @db.Decimal(12, 2)
-  repairCost         Decimal? @db.Decimal(12, 2)
-  purchasePrice      Decimal? @db.Decimal(12, 2)
-  maoPercent         Decimal  @default(70) @db.Decimal(5, 2)
-  assignmentFee      Decimal? @db.Decimal(12, 2)
-  closingCostPercent Decimal  @default(2) @db.Decimal(5, 2)
-  sellingCostPercent Decimal  @default(8) @db.Decimal(5, 2)
-  holdingMonths      Int      @default(6)
-  monthlyHoldingCost Decimal? @db.Decimal(12, 2)
-  monthlyRent        Decimal? @db.Decimal(12, 2)
-  monthlyExpenses    Decimal? @db.Decimal(12, 2)
+  arv                    Decimal? @db.Decimal(12, 2)
+  repairCost             Decimal? @db.Decimal(12, 2)
+  purchasePrice          Decimal? @db.Decimal(12, 2)
+  maoPercent             Decimal  @default(70) @db.Decimal(5, 2)
+  assignmentFee          Decimal? @db.Decimal(12, 2)
+  closingCostPercent     Decimal  @default(2) @db.Decimal(5, 2)
+  sellingCostPercent     Decimal  @default(8) @db.Decimal(5, 2)
+  holdingMonths          Int      @default(6)
+  monthlyHoldingCost     Decimal? @db.Decimal(12, 2)
+  monthlyRent            Decimal? @db.Decimal(12, 2)
+  monthlyExpenses        Decimal? @db.Decimal(12, 2)
+  /// Deal-evaluator inputs (Phase 11): what the seller wants and the loan a Subject-To would keep.
+  sellerAskingPrice      Decimal? @db.Decimal(12, 2)
+  existingLoanBalance    Decimal? @db.Decimal(12, 2)
+  existingMonthlyPayment Decimal? @db.Decimal(12, 2)
+  existingInterestRate   Decimal? @db.Decimal(6, 3)
+  loanArrears            Decimal? @db.Decimal(12, 2)
 
   updatedById String?
   createdAt   DateTime @default(now())
@@ -1650,4 +1660,62 @@ model LeadFormSubmission {
   @@index([formId, createdAt])
   @@index([ipHash, createdAt])
   @@map("lead_form_submissions")
+}
+
+// =========================================================================================
+// 11. PICTURE LINKS + CONTRACT GENERATOR — Phase 11
+// =========================================================================================
+
+enum MediaLinkKind {
+  PHOTOS
+  VIDEO
+  DOCUMENT
+  OTHER
+}
+
+/// A link to media stored elsewhere (Dropbox/Google Drive photo folders, video walkthroughs) —
+/// mirrors Podio's "Pictures" field. Uploaded files stay in `Document`.
+model MediaLink {
+  id             String        @id @default(cuid())
+  organizationId String
+  propertyId     String?
+  property       Property?     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  kind           MediaLinkKind @default(PHOTOS)
+  label          String
+  url            String
+  createdById    String?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, propertyId])
+  @@index([organizationId, leadId])
+  @@map("media_links")
+}
+
+enum ContractTemplateType {
+  CASH
+  NOVATION
+  SUBJECT_TO
+}
+
+/// A purchase agreement drafted from a template. `fields` keeps the inputs so the draft can be
+/// regenerated; `body` is the rendered text at the time it was generated.
+model GeneratedContract {
+  id             String               @id @default(cuid())
+  organizationId String
+  propertyId     String
+  property       Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  type           ContractTemplateType
+  title          String
+  fields         Json
+  body           String               @db.Text
+  documentId     String?
+  createdById    String?
+  createdAt      DateTime             @default(now())
+
+  @@index([organizationId, propertyId])
+  @@map("generated_contracts")
 }

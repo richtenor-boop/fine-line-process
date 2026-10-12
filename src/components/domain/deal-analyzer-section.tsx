@@ -5,17 +5,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
-import { analyzeDeal, type DealInputs } from "@/lib/modules/deal-analyzer/calc";
+import Link from "next/link";
+import { analyzeDeal } from "@/lib/modules/deal-analyzer/calc";
+import { evaluateStrategies, type StrategyResult } from "@/lib/modules/deal-analyzer/strategy";
+import type { AnalyzerInputs } from "@/lib/modules/deal-analyzer/service";
 import { saveDealAnalysisAction, type SaveDealAnalysisState } from "@/lib/modules/deal-analyzer/actions";
 
-type FieldKey = keyof DealInputs;
+type FieldKey = keyof AnalyzerInputs;
+type Group = "deal" | "seller" | "costs" | "rental";
 
-const FIELDS: { key: FieldKey; label: string; suffix?: "%" | "mo"; group: "deal" | "costs" | "rental" }[] = [
+const FIELDS: { key: FieldKey; label: string; suffix?: "%" | "mo"; group: Group }[] = [
   { key: "arv", label: "After-repair value (ARV)", group: "deal" },
   { key: "repairCost", label: "Repair cost", group: "deal" },
   { key: "purchasePrice", label: "Purchase price / offer", group: "deal" },
   { key: "maoPercent", label: "MAO rule", suffix: "%", group: "deal" },
   { key: "assignmentFee", label: "Assignment fee", group: "deal" },
+  { key: "sellerAskingPrice", label: "Seller's asking price", group: "seller" },
+  { key: "existingLoanBalance", label: "Existing loan balance", group: "seller" },
+  { key: "existingMonthlyPayment", label: "Loan payment / mo (PITI)", group: "seller" },
+  { key: "existingInterestRate", label: "Loan interest rate", suffix: "%", group: "seller" },
+  { key: "loanArrears", label: "Missed payments owed", group: "seller" },
   { key: "closingCostPercent", label: "Buy closing costs", suffix: "%", group: "costs" },
   { key: "sellingCostPercent", label: "Selling costs (agent + closing)", suffix: "%", group: "costs" },
   { key: "holdingMonths", label: "Holding period", suffix: "mo", group: "costs" },
@@ -24,7 +33,19 @@ const FIELDS: { key: FieldKey; label: string; suffix?: "%" | "mo"; group: "deal"
   { key: "monthlyExpenses", label: "Monthly expenses (tax, ins., mgmt.)", group: "rental" },
 ];
 
-const GROUP_TITLES = { deal: "Offer", costs: "Flip costs", rental: "Rental" } as const;
+const GROUP_TITLES: Record<Group, string> = {
+  deal: "Offer",
+  seller: "Seller & existing loan",
+  costs: "Flip costs",
+  rental: "Rental",
+};
+
+const FIT_STYLES: Record<StrategyResult["fit"], { label: string; className: string }> = {
+  strong: { label: "Strong fit", className: "bg-green-100 text-green-800" },
+  possible: { label: "Possible", className: "bg-amber-100 text-amber-800" },
+  poor: { label: "Not a fit", className: "bg-slate-200 text-slate-600" },
+  unknown: { label: "Need more info", className: "bg-slate-100 text-slate-500" },
+};
 
 function toText(v: number | null): string {
   return v === null ? "" : String(v);
@@ -49,7 +70,7 @@ export function DealAnalyzerSection({
   canEdit,
 }: {
   propertyId: string;
-  initialInputs: DealInputs;
+  initialInputs: AnalyzerInputs;
   saved: boolean;
   canEdit: boolean;
 }) {
@@ -58,14 +79,14 @@ export function DealAnalyzerSection({
   );
   const [state, formAction, pending] = useActionState(saveDealAnalysisAction, initialState);
 
-  const results = useMemo(() => {
+  const { results, evaluation } = useMemo(() => {
     const n = (k: FieldKey) => {
       const raw = values[k].trim();
       if (raw === "") return null;
       const parsed = Number(raw);
       return Number.isFinite(parsed) ? parsed : null;
     };
-    return analyzeDeal({
+    const deal = analyzeDeal({
       arv: n("arv"),
       repairCost: n("repairCost"),
       purchasePrice: n("purchasePrice"),
@@ -78,6 +99,20 @@ export function DealAnalyzerSection({
       monthlyRent: n("monthlyRent"),
       monthlyExpenses: n("monthlyExpenses"),
     });
+    const strategies = evaluateStrategies({
+      arv: n("arv"),
+      repairCost: n("repairCost"),
+      maoPercent: n("maoPercent") ?? 70,
+      assignmentFee: n("assignmentFee"),
+      sellingCostPercent: n("sellingCostPercent") ?? 8,
+      sellerAskingPrice: n("sellerAskingPrice"),
+      existingLoanBalance: n("existingLoanBalance"),
+      existingMonthlyPayment: n("existingMonthlyPayment"),
+      existingInterestRate: n("existingInterestRate"),
+      loanArrears: n("loanArrears"),
+      monthlyRent: n("monthlyRent"),
+    });
+    return { results: deal, evaluation: strategies };
   }, [values]);
 
   const profitTone =
@@ -110,9 +145,37 @@ export function DealAnalyzerSection({
           />
         </div>
 
+        <div className="@container space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold text-foreground">Deal evaluator</p>
+            <p className="text-xs text-muted">
+              {evaluation.best ? (
+                <>
+                  Best fit: <span className="font-semibold text-foreground">{evaluation.best.label}</span>
+                </>
+              ) : (
+                "Fill in the seller and loan fields below for a recommendation"
+              )}
+            </p>
+          </div>
+          {/* Three across only when the card itself is wide; the property page's main column is not. */}
+          <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-3">
+            {evaluation.results.map((r) => (
+              <StrategyCard
+                key={r.key}
+                result={r}
+                isBest={evaluation.best?.key === r.key}
+                propertyId={propertyId}
+                canEdit={canEdit}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-muted">Suggestions only — rules of thumb, not a substitute for your judgment or legal advice.</p>
+        </div>
+
         <form action={formAction} className="space-y-4">
           <input type="hidden" name="propertyId" value={propertyId} />
-          {(["deal", "costs", "rental"] as const).map((group) => (
+          {(["deal", "seller", "costs", "rental"] as const).map((group) => (
             <fieldset key={group} disabled={!canEdit} className="space-y-2">
               <legend className="text-xs font-semibold uppercase tracking-wide text-muted">{GROUP_TITLES[group]}</legend>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -152,6 +215,55 @@ export function DealAnalyzerSection({
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function StrategyCard({
+  result,
+  isBest,
+  propertyId,
+  canEdit,
+}: {
+  result: StrategyResult;
+  isBest: boolean;
+  propertyId: string;
+  canEdit: boolean;
+}) {
+  const fit = FIT_STYLES[result.fit];
+  const metricValue =
+    result.metric === null ? "—" : result.key === "SUBJECT_TO" ? `${money(result.metric)}/mo` : money(result.metric);
+  const contractHref = `/properties/${propertyId}/contracts/new?type=${result.key}${
+    result.suggestedOffer !== null ? `&price=${result.suggestedOffer}` : ""
+  }`;
+  return (
+    <div className={`flex flex-col rounded-md border p-3 ${isBest ? "border-accent ring-1 ring-accent" : "border-border"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold text-foreground">{result.label}</p>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${fit.className}`}>{fit.label}</span>
+      </div>
+      <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
+        <dt className="text-muted">Suggested offer</dt>
+        <dd className="text-right font-semibold text-foreground">{money(result.suggestedOffer)}</dd>
+        <dt className="text-muted">{result.metricLabel}</dt>
+        <dd className="text-right text-foreground">{metricValue}</dd>
+        {result.cashToClose !== null && (
+          <>
+            <dt className="text-muted">Cash to close</dt>
+            <dd className="text-right text-foreground">{money(result.cashToClose)}</dd>
+          </>
+        )}
+      </dl>
+      <ul className="mt-2 flex-1 list-disc space-y-1 pl-4 text-xs text-muted">
+        {result.reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+      {canEdit && result.fit !== "unknown" && (
+        <Link href={contractHref} className="mt-3 text-xs font-medium text-primary hover:underline">
+          Generate {result.label.toLowerCase()} contract →
+        </Link>
+      )}
+    </div>
   );
 }
 

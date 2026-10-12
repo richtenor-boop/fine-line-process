@@ -21,5 +21,13 @@ export const upsertDealAnalysisSchema = z.object({
   monthlyHoldingCost: optionalMoney,
   monthlyRent: optionalMoney,
   monthlyExpenses: optionalMoney,
+  sellerAskingPrice: optionalMoney,
+  existingLoanBalance: optionalMoney,
+  existingMonthlyPayment: optionalMoney,
+  existingInterestRate: z.preprocess(
+    (v) => (v === "" || v === undefined || v === null ? null : v),
+    z.coerce.number().min(0).max(30).nullable(),
+  ),
+  loanArrears: optionalMoney,
 });
 export type UpsertDealAnalysisInput = z.infer<typeof upsertDealAnalysisSchema>;

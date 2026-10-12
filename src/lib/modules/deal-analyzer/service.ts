@@ -5,8 +5,18 @@ import type { UpsertDealAnalysisInput } from "./schema";
 
 const num = (v: { toString(): string } | null | undefined): number | null => (v == null ? null : Number(v));
 
+/** Seller/loan facts the strategy evaluator needs on top of the underwriting inputs. */
+export interface EvaluatorInputs {
+  sellerAskingPrice: number | null;
+  existingLoanBalance: number | null;
+  existingMonthlyPayment: number | null;
+  existingInterestRate: number | null;
+  loanArrears: number | null;
+}
+export type AnalyzerInputs = DealInputs & EvaluatorInputs;
+
 export interface DealAnalysisView {
-  inputs: DealInputs;
+  inputs: AnalyzerInputs;
   /** False when nothing is saved yet and `inputs` are prefilled suggestions from the property. */
   saved: boolean;
   updatedAt: Date | null;
@@ -20,7 +30,12 @@ export interface DealAnalysisView {
 export async function getDealAnalysis(organizationId: string, propertyId: string): Promise<DealAnalysisView | null> {
   const property = await prisma.property.findFirst({
     where: { id: propertyId, organizationId, deletedAt: null },
-    include: { dealAnalysis: true, repairEstimates: { select: { estimatedCost: true } } },
+    include: {
+      dealAnalysis: true,
+      repairEstimates: { select: { estimatedCost: true } },
+      mortgages: { select: { currentBalance: true }, orderBy: { createdAt: "desc" }, take: 1 },
+      leads: { where: { deletedAt: null }, select: { askingPrice: true }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
   });
   if (!property) return null;
 
@@ -41,6 +56,11 @@ export async function getDealAnalysis(organizationId: string, propertyId: string
         monthlyHoldingCost: num(saved.monthlyHoldingCost),
         monthlyRent: num(saved.monthlyRent),
         monthlyExpenses: num(saved.monthlyExpenses),
+        sellerAskingPrice: num(saved.sellerAskingPrice),
+        existingLoanBalance: num(saved.existingLoanBalance),
+        existingMonthlyPayment: num(saved.existingMonthlyPayment),
+        existingInterestRate: num(saved.existingInterestRate),
+        loanArrears: num(saved.loanArrears),
       },
     };
   }
@@ -61,6 +81,11 @@ export async function getDealAnalysis(organizationId: string, propertyId: string
       monthlyHoldingCost: null,
       monthlyRent: null,
       monthlyExpenses: null,
+      sellerAskingPrice: num(property.leads[0]?.askingPrice),
+      existingLoanBalance: num(property.mortgageBalance) ?? num(property.mortgages[0]?.currentBalance),
+      existingMonthlyPayment: null,
+      existingInterestRate: null,
+      loanArrears: null,
     },
   };
 }
