@@ -28,7 +28,12 @@ test("lead form → lead → deal analyzer → speed to lead", async ({ page, br
   expect(framed.headers()["x-frame-options"]).toBeUndefined();
   expect(framed.headers()["content-security-policy"]).toContain("frame-ancestors *");
 
-  const publicContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  // A distinct client IP per run, so repeated runs don't trip the form's per-IP hourly rate limit.
+  const fakeIp = `10.${stamp % 255}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+  const publicContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    extraHTTPHeaders: { "x-forwarded-for": fakeIp },
+  });
   const publicPage = await publicContext.newPage();
   await publicPage.goto(formUrl);
   await expect(publicPage.getByRole("heading", { name: /cash offer/i })).toBeVisible();

@@ -9,7 +9,7 @@ export default async function ReportsPage() {
   return (
     <div className="max-w-3xl space-y-6">
       <h1 className="text-xl font-semibold text-foreground">Reports</h1>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {REPORT_DEFINITIONS.map((report) => (
           <Link key={report.key} href={`/reports/${report.key}`}>
             <Card className="h-full transition-colors hover:border-primary">

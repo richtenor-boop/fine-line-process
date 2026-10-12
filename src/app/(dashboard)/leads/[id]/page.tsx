@@ -60,7 +60,7 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">
             {lead.contact.firstName} {lead.contact.lastName}
@@ -91,8 +91,8 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Lead details</CardTitle>

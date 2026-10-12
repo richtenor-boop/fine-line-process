@@ -6,7 +6,7 @@ import { test, expect } from "@playwright/test";
  * (`npm run db:migrate && npm run dev`, or let the Playwright webServer start it).
  */
 test("register, sign out, sign back in", async ({ page }) => {
-  const uniqueEmail = `owner-${Date.now()}@test.local`;
+  const uniqueEmail = `owner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
 
   await page.goto("/register");
   await page.getByLabel("Organization name").fill("Playwright Test Investments");
@@ -16,7 +16,8 @@ test("register, sign out, sign back in", async ({ page }) => {
   await page.getByRole("button", { name: "Create organization" }).click();
 
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByText("Playwright Test Investments")).toBeVisible();
+  // Role query, not text: Next's route announcer can echo the same heading text for screen readers.
+  await expect(page.getByRole("heading", { name: "Playwright Test Investments" })).toBeVisible();
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login/);

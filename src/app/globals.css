@@ -1,13 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
+  /* Fine Line brand: deep navy + gold, sampled from public/brand/logo-full.png. */
+  --background: #f4f6f9;
   --surface: #ffffff;
-  --foreground: #0f172a;
-  --muted: #64748b;
-  --border: #e2e8f0;
-  --primary: #1d4ed8;
+  --foreground: #0b1a33;
+  --muted: #5b6b82;
+  --border: #e1e6ee;
+  --primary: #0a1f44;
+  --primary-hover: #163469;
   --primary-foreground: #ffffff;
+  --accent: #d9a33a;
+  --accent-strong: #b8862b;
+  --accent-soft: #fbf3e2;
+  --sidebar: #0a1f44;
+  --sidebar-foreground: #c9d3e3;
   --danger: #dc2626;
   --success: #16a34a;
 }
@@ -19,7 +26,13 @@
   --color-muted: var(--muted);
   --color-border: var(--border);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
   --color-danger: var(--danger);
   --color-success: var(--success);
   --font-sans: var(--font-geist-sans);
@@ -30,4 +43,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Wide data tables scroll sideways inside their card on small screens instead of pushing the page. */
+main :where(.p-0):has(> table) {
+  overflow-x: auto;
 }

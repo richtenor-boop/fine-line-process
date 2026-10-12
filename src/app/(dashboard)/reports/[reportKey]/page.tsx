@@ -210,7 +210,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/r
       const c = await getConversionRates(orgId, range);
       body = (
         <Card>
-          <CardContent className="grid grid-cols-3 gap-6 pt-5">
+          <CardContent className="grid grid-cols-2 gap-6 pt-5 sm:grid-cols-3">
             <Stat label="Leads" value={String(c.leads)} />
             <Stat label="Appointments" value={String(c.appointments)} />
             <Stat label="Offers" value={String(c.offers)} />
@@ -304,7 +304,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/r
       body = (
         <div className="space-y-4">
           <Card>
-            <CardContent className="grid grid-cols-3 gap-6 pt-5">
+            <CardContent className="grid grid-cols-2 gap-6 pt-5 sm:grid-cols-3">
               <Stat label="Marketing spend" value={fmtMoney(f.marketingSpend)} />
               <Stat label="Revenue" value={fmtMoney(f.revenue)} />
               <Stat label="Profit" value={fmtMoney(f.profit)} />

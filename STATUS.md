@@ -180,6 +180,8 @@ three most-cited capabilities that need no paid data provider.
 | Automation trigger: Form Submitted | IMPLEMENTED — closes the Phase 6 gap; new leads also fire Lead Created |
 | Speed to Lead report (median/average response, % within 5 min / 1 hr, per-assignee, leads waiting on first contact) | IMPLEMENTED — measures the first OUTBOUND call/SMS/email; inbound messages don't count |
 | Clickjacking protection (`X-Frame-Options: DENY` / `frame-ancestors 'none'`) | IMPLEMENTED — app-wide; only `/f/*` forms may be framed |
+| Fine Line branding — logo on sign-in and sidebar, navy/gold theme, browser-tab icon | IMPLEMENTED — assets in `public/brand/`, colors as CSS tokens in `globals.css` |
+| Phone/tablet layout — slide-out menu below 1024px, single-column detail pages, sideways-scrolling tables | IMPLEMENTED — verified at 390px wide with no horizontal page scroll |
 | Skip tracing, list pulling/stacking, driving for dollars, automated valuations (RentCast etc.) | PLANNED — REQUIRES THIRD-PARTY CREDENTIALS and paid usage; not built without an approved provider |
 
 ## Third-party integrations
