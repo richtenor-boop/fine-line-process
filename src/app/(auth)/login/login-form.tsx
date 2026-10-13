@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const initialState: LoginActionState = {};
 
-export function LoginForm() {
+export function LoginForm({ showRegisterLink }: { showRegisterLink: boolean }) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
 
   return (
@@ -31,12 +31,14 @@ export function LoginForm() {
             {pending ? "Signing in..." : "Sign in"}
           </Button>
         </form>
-        <p className="text-center text-sm text-muted">
-          No organization yet?{" "}
-          <Link href="/register" className="font-medium text-primary hover:underline">
-            Create one
-          </Link>
-        </p>
+        {showRegisterLink && (
+          <p className="text-center text-sm text-muted">
+            No organization yet?{" "}
+            <Link href="/register" className="font-medium text-primary hover:underline">
+              Create one
+            </Link>
+          </p>
+        )}
       </CardContent>
     </Card>
   );

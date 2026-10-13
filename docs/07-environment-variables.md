@@ -79,3 +79,9 @@ way).
 ## Deploying on Vercel
 
 `npm run vercel-build` (Vercel runs it automatically) does `prisma generate && prisma db push && next build`. `db push` applies additive schema changes and refuses (fails the build) on anything that would drop data, so a destructive change can never ship silently. Set `DATABASE_URL` to the database's direct (non-pooled) connection string and `AUTH_SECRET` to a random 32+ character string. The first person to open `/register` creates the organization and becomes its Owner.
+
+## Sign-up
+
+| Variable | Required | Notes |
+|---|---|---|
+| `ALLOW_REGISTRATION` | No | Unset (production): `/register` works only until the first organization exists — that person becomes the Owner and invites everyone else from Settings → Users. `true`: sign-up stays open (local development, the e2e suite, multi-company hosting). |

@@ -133,3 +133,14 @@ export async function getOrganizationCounts(organizationId: string) {
   ]);
   return { users, roles, teams, leads, properties };
 }
+
+/**
+ * Self-serve sign-up creates a brand-new organization, so on a single-company install it should
+ * only ever happen once: the first visitor becomes the Owner and everyone else is invited from
+ * Settings → Users. Set ALLOW_REGISTRATION=true to keep /register open (multi-company hosting,
+ * local development, end-to-end tests).
+ */
+export async function isRegistrationOpen(): Promise<boolean> {
+  if (process.env.ALLOW_REGISTRATION === "true") return true;
+  return (await prisma.organization.count()) === 0;
+}
