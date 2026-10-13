@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requirePermission } from "@/lib/rbac";
+import { requirePermission, currentUserHasPermission } from "@/lib/rbac";
 import { getProperty } from "@/lib/modules/properties/service";
 import { listCustomFieldDefinitions } from "@/lib/modules/custom-fields/service";
 import { listTasks } from "@/lib/modules/tasks/service";
 import { listDocuments } from "@/lib/modules/documents/service";
 import { findMatchingBuyers } from "@/lib/modules/buyers/service";
 import { getPropertyDetails } from "@/lib/modules/property-details/service";
+import { getDealAnalysis } from "@/lib/modules/deal-analyzer/service";
+import { listMediaLinks } from "@/lib/modules/media-links/service";
+import { listGeneratedContracts } from "@/lib/modules/contract-generator/service";
+import { MediaLinksSection } from "@/components/domain/media-links-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NotesSection } from "@/components/domain/notes-section";
 import { CustomFieldsSection } from "@/components/domain/custom-fields-section";
@@ -14,6 +18,7 @@ import { TaskList } from "@/components/domain/task-list";
 import { QuickTaskForm } from "@/components/domain/quick-task-form";
 import { DocumentsSection } from "@/components/domain/documents-section";
 import { PropertyDetailsSection } from "@/components/domain/property-details-section";
+import { DealAnalyzerSection } from "@/components/domain/deal-analyzer-section";
 import { removeOwnerAction } from "./actions";
 import { AddOwnerForm } from "./add-owner-form";
 import { Button } from "@/components/ui/button";
@@ -22,13 +27,30 @@ export default async function PropertyDetailPage({ params }: PageProps<"/propert
   const { id } = await params;
   const session = await requirePermission("properties:view");
 
-  const [property, customFieldDefinitions, tasks, documents, matchingBuyers, propertyDetails] = await Promise.all([
+  const [
+    property,
+    customFieldDefinitions,
+    tasks,
+    documents,
+    matchingBuyers,
+    propertyDetails,
+    dealAnalysis,
+    canEditProperty,
+    mediaLinks,
+    contracts,
+    canEditDeals,
+  ] = await Promise.all([
     getProperty(session.user.organizationId, id),
     listCustomFieldDefinitions(session.user.organizationId, "PROPERTY"),
     listTasks(session.user.organizationId, "team", session.user.id, { propertyId: id }),
     listDocuments(session.user.organizationId, { propertyId: id }),
     findMatchingBuyers(session.user.organizationId, id),
     getPropertyDetails(session.user.organizationId, id),
+    getDealAnalysis(session.user.organizationId, id),
+    currentUserHasPermission("properties:edit"),
+    listMediaLinks(session.user.organizationId, { propertyId: id }),
+    listGeneratedContracts(session.user.organizationId, id),
+    currentUserHasPermission("deals:edit"),
   ]);
   if (!property) notFound();
 
@@ -43,8 +65,8 @@ export default async function PropertyDetailPage({ params }: PageProps<"/propert
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Property details</CardTitle>
@@ -80,6 +102,15 @@ export default async function PropertyDetailPage({ params }: PageProps<"/propert
             </CardContent>
           </Card>
 
+          {dealAnalysis && (
+            <DealAnalyzerSection
+              propertyId={property.id}
+              initialInputs={dealAnalysis.inputs}
+              saved={dealAnalysis.saved}
+              canEdit={canEditProperty}
+            />
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Tasks</CardTitle>
@@ -92,6 +123,8 @@ export default async function PropertyDetailPage({ params }: PageProps<"/propert
             </CardContent>
           </Card>
 
+          <MediaLinksSection links={mediaLinks} propertyId={property.id} canEdit={canEditProperty} />
+
           <DocumentsSection documents={documents} propertyId={property.id} />
 
           <PropertyDetailsSection propertyId={property.id} details={propertyDetails} />
@@ -100,6 +133,32 @@ export default async function PropertyDetailPage({ params }: PageProps<"/propert
         </div>
 
         <div className="space-y-6">
+          <Card>
+            <CardHeader className="flex items-center justify-between gap-2">
+              <CardTitle>Contracts</CardTitle>
+              {canEditDeals && (
+                <Link href={`/properties/${property.id}/contracts/new`} className="text-xs font-medium text-primary hover:underline">
+                  + Generate
+                </Link>
+              )}
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1">
+                {contracts.map((c) => (
+                  <li key={c.id} className="text-sm">
+                    <Link href={`/contracts/${c.id}`} className="text-primary hover:underline">
+                      {c.title}
+                    </Link>
+                    <span className="block text-xs text-muted">{c.createdAt.toLocaleDateString()}</span>
+                  </li>
+                ))}
+                {contracts.length === 0 && (
+                  <p className="text-sm text-muted">Cash, novation, and Subject-To agreements, prefilled from this property.</p>
+                )}
+              </ul>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Owners</CardTitle>

@@ -15,7 +15,9 @@ export async function uploadDocument(
     throw new Error("A document must be attached to a lead, property, or deal.");
   }
   if (file.size === 0) throw new Error("File is empty.");
-  if (file.size > MAX_UPLOAD_BYTES) throw new Error("File is larger than the 20MB limit.");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error("File is larger than the 4MB limit. For photos, add a Dropbox or Google Drive link under Pictures & links.");
+  }
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const stored = await getStorageAdapter().putObject({ organizationId, fileName: file.name, data: buffer });

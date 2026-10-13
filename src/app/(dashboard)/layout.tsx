@@ -16,10 +16,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
-      <SidebarNav granted={granted} />
+      <SidebarNav granted={granted} className="hidden lg:flex" />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar userName={session.user.name} roleName={session.user.roleName} unreadNotificationCount={unreadNotificationCount} />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <TopBar
+          userName={session.user.name}
+          roleName={session.user.roleName}
+          unreadNotificationCount={unreadNotificationCount}
+          mobileNav={<SidebarNav granted={granted} />}
+        />
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

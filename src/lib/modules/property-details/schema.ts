@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { blankToUndefined } from "@/lib/zod-helpers";
 
 /**
  * Phase 9 — source spec §6/§12: the specialized real-estate detail tables (Foreclosure, Tax Sale,
@@ -23,7 +24,7 @@ export const foreclosureStatusEnum = z.enum([
 export const upsertForeclosureSchema = z.object({
   propertyId: z.string().min(1),
   status: foreclosureStatusEnum,
-  defaultAmount: z.coerce.number().min(0).optional(),
+  defaultAmount: blankToUndefined(z.coerce.number().min(0).optional()),
   auctionDate: z.string().optional().or(z.literal("")),
   trusteeName: z.string().max(200).optional().or(z.literal("")),
   caseNumber: z.string().max(120).optional().or(z.literal("")),
@@ -35,8 +36,8 @@ export const upsertTaxSaleSchema = z.object({
   propertyId: z.string().min(1),
   status: taxSaleStatusEnum,
   saleDate: z.string().optional().or(z.literal("")),
-  saleAmount: z.coerce.number().min(0).optional(),
-  overbidAmount: z.coerce.number().min(0).optional(),
+  saleAmount: blankToUndefined(z.coerce.number().min(0).optional()),
+  overbidAmount: blankToUndefined(z.coerce.number().min(0).optional()),
 });
 export type UpsertTaxSaleInput = z.infer<typeof upsertTaxSaleSchema>;
 
@@ -58,7 +59,7 @@ export const surplusClaimStatusEnum = z.enum([
 export const createTaxSurplusClaimSchema = z.object({
   taxSaleId: z.string().min(1),
   status: surplusClaimStatusEnum.default("NEW"),
-  surplusAmount: z.coerce.number().min(0).optional(),
+  surplusAmount: blankToUndefined(z.coerce.number().min(0).optional()),
 });
 export type CreateTaxSurplusClaimInput = z.infer<typeof createTaxSurplusClaimSchema>;
 
@@ -74,7 +75,7 @@ export const mortgageSurplusStatusEnum = z.enum([
 export const upsertMortgageSurplusClaimSchema = z.object({
   propertyId: z.string().min(1),
   status: mortgageSurplusStatusEnum,
-  surplusAmount: z.coerce.number().min(0).optional(),
+  surplusAmount: blankToUndefined(z.coerce.number().min(0).optional()),
 });
 export type UpsertMortgageSurplusClaimInput = z.infer<typeof upsertMortgageSurplusClaimSchema>;
 
@@ -130,14 +131,14 @@ export const upsertCreativeFinanceDealSchema = z.object({
   propertyId: z.string().min(1),
   structureType: creativeFinanceTypeEnum,
   terms: z.string().max(2000).optional().or(z.literal("")),
-  monthlyPayment: z.coerce.number().min(0).optional(),
+  monthlyPayment: blankToUndefined(z.coerce.number().min(0).optional()),
 });
 export type UpsertCreativeFinanceDealInput = z.infer<typeof upsertCreativeFinanceDealSchema>;
 
 export const createLienSchema = z.object({
   propertyId: z.string().min(1),
   holderName: z.string().min(1, "Holder name is required").max(200),
-  amount: z.coerce.number().min(0).optional(),
+  amount: blankToUndefined(z.coerce.number().min(0).optional()),
   filedDate: z.string().optional().or(z.literal("")),
   lienType: z.string().max(80).optional().or(z.literal("")),
 });
@@ -146,8 +147,8 @@ export type CreateLienInput = z.infer<typeof createLienSchema>;
 export const createMortgageSchema = z.object({
   propertyId: z.string().min(1),
   lenderName: z.string().min(1, "Lender name is required").max(200),
-  originalAmount: z.coerce.number().min(0).optional(),
-  currentBalance: z.coerce.number().min(0).optional(),
+  originalAmount: blankToUndefined(z.coerce.number().min(0).optional()),
+  currentBalance: blankToUndefined(z.coerce.number().min(0).optional()),
   originationDate: z.string().optional().or(z.literal("")),
 });
 export type CreateMortgageInput = z.infer<typeof createMortgageSchema>;
@@ -156,7 +157,7 @@ export const createAuctionSchema = z.object({
   propertyId: z.string().min(1),
   auctionDate: z.string().min(1, "Auction date is required"),
   location: z.string().max(200).optional().or(z.literal("")),
-  openingBid: z.coerce.number().min(0).optional(),
+  openingBid: blankToUndefined(z.coerce.number().min(0).optional()),
   result: z.string().max(200).optional().or(z.literal("")),
 });
 export type CreateAuctionInput = z.infer<typeof createAuctionSchema>;
@@ -174,8 +175,8 @@ export const createComparableSaleSchema = z.object({
   addressLine1: z.string().min(1, "Address is required").max(200),
   soldPrice: z.coerce.number().min(0, "Enter a sale price"),
   soldDate: z.string().min(1, "Date is required"),
-  distanceMiles: z.coerce.number().min(0).optional(),
-  squareFeet: z.coerce.number().int().min(0).optional(),
+  distanceMiles: blankToUndefined(z.coerce.number().min(0).optional()),
+  squareFeet: blankToUndefined(z.coerce.number().int().min(0).optional()),
 });
 export type CreateComparableSaleInput = z.infer<typeof createComparableSaleSchema>;
 

@@ -69,3 +69,19 @@ way).
   factory falls back to its mock implementation (see [06-integrations.md](06-integrations.md)).
 - A missing *required* (Phase 1) variable should fail fast and loud at boot with a clear message —
   see `src/lib/env.ts`, which validates `process.env` against a Zod schema on startup.
+
+## File storage
+
+| Variable | Required | Notes |
+|---|---|---|
+| `STORAGE_DRIVER` | No | `database` stores uploaded files and generated contracts in Postgres (durable, private, served only through the permission-checked `/api/documents/[id]` route). `local` writes to `./.data/uploads`. Unset: `database` when running on Vercel (`VERCEL` is set — its filesystem doesn't persist), `local` otherwise. Uploads are capped at 4MB (Vercel's request-body limit); link photo folders instead of uploading photos. |
+
+## Deploying on Vercel
+
+`npm run vercel-build` (Vercel runs it automatically) does `prisma generate && prisma db push && next build`. `db push` applies additive schema changes and refuses (fails the build) on anything that would drop data, so a destructive change can never ship silently. Set `DATABASE_URL` to the database's direct (non-pooled) connection string and `AUTH_SECRET` to a random 32+ character string. The first person to open `/register` creates the organization and becomes its Owner.
+
+## Sign-up
+
+| Variable | Required | Notes |
+|---|---|---|
+| `ALLOW_REGISTRATION` | No | Unset (production): `/register` works only until the first organization exists — that person becomes the Owner and invites everyone else from Settings → Users. `true`: sign-up stays open (local development, the e2e suite, multi-company hosting). |

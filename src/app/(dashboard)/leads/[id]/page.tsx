@@ -27,12 +27,15 @@ import { QuickTaskForm } from "@/components/domain/quick-task-form";
 import { QuickAppointmentForm } from "./quick-appointment-form";
 import { EnrollCampaignForm } from "./enroll-campaign-form";
 import { AiInsightsCard } from "./ai-insights-card";
+import { listLeadFormSubmissions } from "@/lib/modules/lead-forms/service";
+import { listMediaLinks } from "@/lib/modules/media-links/service";
+import { MediaLinksSection } from "@/components/domain/media-links-section";
 
 export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
   const { id } = await params;
   const session = await requirePermission("leads:view");
 
-  const [lead, users, customFieldDefinitions, canAssign, canMessage, canManageCampaigns, tasks, appointments, timeline, documents] =
+  const [lead, users, customFieldDefinitions, canAssign, canMessage, canManageCampaigns, tasks, appointments, timeline, documents, formSubmissions, mediaLinks, canEditLead] =
     await Promise.all([
       getLead(session.user.organizationId, id),
       listUsers(session.user.organizationId),
@@ -44,6 +47,9 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
       listAppointmentsForLead(session.user.organizationId, id),
       getLeadActivityTimeline(session.user.organizationId, id),
       listDocuments(session.user.organizationId, { leadId: id }),
+      listLeadFormSubmissions(session.user.organizationId, id),
+      listMediaLinks(session.user.organizationId, { leadId: id }),
+      currentUserHasPermission("leads:edit"),
     ]);
   if (!lead) notFound();
 
@@ -58,7 +64,7 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">
             {lead.contact.firstName} {lead.contact.lastName}
@@ -89,8 +95,8 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Lead details</CardTitle>
@@ -132,6 +138,8 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
 
           <DealSection organizationId={session.user.organizationId} leadId={lead.id} />
 
+          <MediaLinksSection links={mediaLinks} leadId={lead.id} canEdit={canEditLead} />
+
           <DocumentsSection documents={documents} leadId={lead.id} />
 
           <NotesSection notes={lead.notes} leadId={lead.id} />
@@ -146,6 +154,26 @@ export default async function LeadDetailPage({ params }: PageProps<"/leads/[id]"
             initialReason={lead.aiScoreReason}
             isLive={getAiProvider().isLive}
           />
+
+          {formSubmissions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Web form submissions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-3">
+                  {formSubmissions.map((s) => (
+                    <li key={s.id} className="text-sm">
+                      <p className="text-xs text-muted">
+                        {s.form.name} · {s.createdAt.toLocaleString()}
+                      </p>
+                      <p className="whitespace-pre-wrap text-foreground">{s.message || "No message."}</p>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

@@ -2,6 +2,7 @@ import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { prisma } from "@/lib/db";
 
 /**
  * Object storage — see docs/06-integrations.md §Object Storage. Unlike the Phase 5 telephony/
@@ -56,13 +57,43 @@ const localFilesystemAdapter: StorageAdapter = {
   },
 };
 
-/** Falls back to the local adapter until S3 credentials are configured and a real implementation
- * exists behind them — same factory pattern as the Phase 5 integrations. */
+/** Durable and private (bytes live in Postgres, served only through the permission-checked
+ * /api/documents route). Right for contracts and PDFs at small-team volume; database size is the
+ * limit, so move to S3-compatible storage before storing large media at scale. */
+const databaseAdapter: StorageAdapter = {
+  name: "database",
+  isDurable: true,
+
+  async putObject({ organizationId, fileName, data }) {
+    const storageKey = `${safeKeySegment(organizationId)}/${crypto.randomUUID()}-${safeKeySegment(fileName)}`;
+    await prisma.storedFile.create({
+      data: { key: storageKey, organizationId, data: new Uint8Array(data), sizeBytes: data.byteLength },
+    });
+    return { storageKey, sizeBytes: data.byteLength };
+  },
+
+  async getObject(storageKey) {
+    const file = await prisma.storedFile.findUnique({ where: { key: storageKey } });
+    if (!file) throw new Error("File not found.");
+    return Buffer.from(file.data);
+  },
+
+  async deleteObject(storageKey) {
+    await prisma.storedFile.deleteMany({ where: { key: storageKey } });
+  },
+};
+
+/**
+ * STORAGE_DRIVER picks the adapter explicitly ("database" | "local"). Unset, it uses the database
+ * on Vercel — whose filesystem doesn't persist between requests, so the local adapter would
+ * silently lose uploads — and the local disk everywhere else.
+ */
 export function getStorageAdapter(): StorageAdapter {
   if (process.env.S3_BUCKET) {
     console.warn(
-      "[storage] S3_BUCKET is set, but no real S3 adapter is implemented yet — falling back to local filesystem. See docs/06-integrations.md.",
+      "[storage] S3_BUCKET is set, but no real S3 adapter is implemented yet — ignoring it. See docs/06-integrations.md.",
     );
   }
-  return localFilesystemAdapter;
+  const driver = process.env.STORAGE_DRIVER ?? (process.env.VERCEL ? "database" : "local");
+  return driver === "database" ? databaseAdapter : localFilesystemAdapter;
 }

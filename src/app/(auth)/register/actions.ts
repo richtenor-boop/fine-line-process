@@ -2,7 +2,7 @@
 
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
-import { registerOrganization } from "@/lib/modules/organizations/service";
+import { registerOrganization, isRegistrationOpen } from "@/lib/modules/organizations/service";
 import { registerSchema } from "@/lib/modules/organizations/schema";
 
 export interface RegisterActionState {
@@ -14,6 +14,11 @@ export async function registerAction(
   _prevState: RegisterActionState,
   formData: FormData,
 ): Promise<RegisterActionState> {
+  // Enforced here, not just by hiding the page: the action is callable directly.
+  if (!(await isRegistrationOpen())) {
+    return { error: "Sign-up is closed. Ask your administrator to add you under Settings → Users." };
+  }
+
   const parsed = registerSchema.safeParse({
     organizationName: formData.get("organizationName"),
     ownerName: formData.get("ownerName"),

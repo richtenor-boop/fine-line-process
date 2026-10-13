@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { blankToUndefined } from "@/lib/zod-helpers";
 
 export const leadMotivationEnum = z.enum(["LOW", "MEDIUM", "HIGH", "UNKNOWN"]);
 
@@ -26,7 +27,7 @@ export const createLeadSchema = z
     assignedUserId: z.string().optional().or(z.literal("")),
     motivation: leadMotivationEnum.default("UNKNOWN"),
     timeline: z.string().max(120).optional().or(z.literal("")),
-    askingPrice: z.coerce.number().min(0).optional(),
+    askingPrice: blankToUndefined(z.coerce.number().min(0).optional()),
   })
   .superRefine((data, ctx) => {
     if (data.contactMode === "existing" && !data.contactId) {
@@ -47,8 +48,8 @@ export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 export const updateLeadDetailsSchema = z.object({
   motivation: leadMotivationEnum,
   timeline: z.string().max(120).optional().or(z.literal("")),
-  askingPrice: z.coerce.number().min(0).optional(),
-  offerAmount: z.coerce.number().min(0).optional(),
+  askingPrice: blankToUndefined(z.coerce.number().min(0).optional()),
+  offerAmount: blankToUndefined(z.coerce.number().min(0).optional()),
   nextFollowUpAt: z.string().optional().or(z.literal("")),
 });
 export type UpdateLeadDetailsInput = z.infer<typeof updateLeadDetailsSchema>;

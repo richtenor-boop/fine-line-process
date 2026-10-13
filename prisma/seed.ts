@@ -2,6 +2,7 @@
  * Development seed data. Fictional only — never commit real homeowner or user PII here
  * (source spec §34). Run with `npm run db:seed`.
  */
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";

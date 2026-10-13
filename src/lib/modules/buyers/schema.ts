@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { blankToUndefined } from "@/lib/zod-helpers";
 
 export const buyerStrategyEnum = z.enum(["FLIP", "RENTAL", "WHOLESALE", "BRRRR", "OTHER"]);
 export const propertyTypeEnum = z.enum([
@@ -25,10 +26,10 @@ export const createBuyerSchema = z
     markets: z.string().max(400).optional().or(z.literal("")), // comma-separated
     zipCodes: z.string().max(400).optional().or(z.literal("")), // comma-separated
     propertyTypes: z.array(propertyTypeEnum).optional().default([]),
-    minPrice: z.coerce.number().min(0).optional(),
-    maxPrice: z.coerce.number().min(0).optional(),
-    minBedrooms: z.coerce.number().int().min(0).optional(),
-    maxRehabBudget: z.coerce.number().min(0).optional(),
+    minPrice: blankToUndefined(z.coerce.number().min(0).optional()),
+    maxPrice: blankToUndefined(z.coerce.number().min(0).optional()),
+    minBedrooms: blankToUndefined(z.coerce.number().int().min(0).optional()),
+    maxRehabBudget: blankToUndefined(z.coerce.number().min(0).optional()),
     strategy: buyerStrategyEnum.optional(),
     isCashBuyer: z.coerce.boolean().default(false),
   })

@@ -95,7 +95,7 @@ represent a mocked or planned capability as operational.
 | Notifications (bell, unread count, mark read/all read) | IMPLEMENTED |
 | Automations — trigger + condition + action step builder | IMPLEMENTED — list-based builder, not a drag-and-drop visual canvas (deliberate scope decision, see docs/05-mvp-plan.md) |
 | Automation triggers: Lead Created/Updated, Stage Changed, Tag Added, SMS/Email Received, Appointment Scheduled, Task Completed | IMPLEMENTED |
-| Automation triggers: Form Submitted, Incoming/Missed Call, Date Reached | PLANNED — each blocked on infrastructure that doesn't exist yet (public forms, call-answer detection, a scheduler) |
+| Automation triggers: Incoming/Missed Call, Date Reached | PLANNED — each blocked on infrastructure that doesn't exist yet (call-answer detection, a scheduler); Form Submitted shipped in Phase 10 |
 | Automation trigger: Contract Signed | IMPLEMENTED — added in Phase 7 once Contracts existed |
 | Automation actions: Send SMS/Email, Create Task, Assign User, Change Stage, Add/Remove Tag, Create Notification, Create Appointment, Start/Stop Campaign, Send Webhook | IMPLEMENTED |
 | Automation action: Generate AI Summary | PLANNED — Phase 8 |
@@ -163,6 +163,36 @@ represent a mocked or planned capability as operational.
 | Calendar — Auction dates | IMPLEMENTED — `Auction.auctionDate` now plots on the Phase 7 Calendar (`/calendar`) alongside appointments/tasks/closings, linking to the property |
 | Calendar — Court dates | PLANNED — no dated "court date" field exists on `ProbateCase`/`ShortSale`/`Foreclosure` today (they carry filed/default/auction dates, not hearing dates); would need a schema addition, not just a query change |
 | Property list — case-type filter + badge (`/properties`) | IMPLEMENTED — filter by Foreclosure/Tax Sale/Probate/Short Sale, plus a case badge column on each row |
+
+## Phase 10 — Deal Analyzer, Lead Capture Forms, Speed to Lead
+
+Gap analysis against leading investor CRMs (REsimpli, DealMachine, Left Main, InvestorFuse): the
+three most-cited capabilities that need no paid data provider.
+
+| Capability | Status |
+|---|---|
+| Deal Analyzer on every Property page — MAO (70% rule, adjustable), wholesale offer, offer-vs-MAO spread, flip profit/ROI, rental cash flow, cap rate, 1% rule | IMPLEMENTED — live recalculation as you type; one saved worksheet per property (`DealAnalysis`); derived figures computed on read, never stored |
+| Deal Analyzer prefill from existing data (property ARV/estimated value, sum of itemized repair estimates) | IMPLEMENTED — suggestions only; nothing is written until the user saves, so no record is overwritten |
+| Deal Analyzer financing (loan terms, cash-on-cash with leverage) | PLANNED — all figures assume an all-cash purchase and the UI says so |
+| Public lead-capture forms (`/settings/lead-forms` → shareable `/f/<token>` link + iframe embed code) | IMPLEMENTED — mobile-friendly, honeypot spam trap, per-IP hourly rate limit (hashed IP, best-effort) |
+| Form submission → lead (contact, property, lead source, assignee) with duplicate protection | IMPLEMENTED — reuses an existing contact by email/phone and attaches repeat submissions to that seller's open lead instead of creating a duplicate; reuses an existing property by address + ZIP |
+| Form submission notification + seller message on the Lead page | IMPLEMENTED |
+| Automation trigger: Form Submitted | IMPLEMENTED — closes the Phase 6 gap; new leads also fire Lead Created |
+| Speed to Lead report (median/average response, % within 5 min / 1 hr, per-assignee, leads waiting on first contact) | IMPLEMENTED — measures the first OUTBOUND call/SMS/email; inbound messages don't count |
+| Clickjacking protection (`X-Frame-Options: DENY` / `frame-ancestors 'none'`) | IMPLEMENTED — app-wide; only `/f/*` forms may be framed |
+| Fine Line branding — logo on sign-in and sidebar, navy/gold theme, browser-tab icon | IMPLEMENTED — assets in `public/brand/`, colors as CSS tokens in `globals.css` |
+| Phone/tablet layout — slide-out menu below 1024px, single-column detail pages, sideways-scrolling tables | IMPLEMENTED — verified at 390px wide with no horizontal page scroll |
+| Skip tracing, list pulling/stacking, driving for dollars, automated valuations (RentCast etc.) | PLANNED — REQUIRES THIRD-PARTY CREDENTIALS and paid usage; not built without an approved provider |
+
+## Phase 11 — Podio-style Lead Views, Picture Links, Deal Evaluator, Contract Generator
+
+| Capability | Status |
+|---|---|
+| Leads list views — Badge (Podio-style cards: address, latest notes, stage, follow-up, value, creator, note count), Table, Activity (org-wide feed), Calendar (follow-ups: overdue / today / next 7 days / later), Card → pipeline board | IMPLEMENTED — `?view=` on `/leads`; Badge is the default |
+| Picture & media links on properties and leads (Dropbox, Google Drive/Photos, OneDrive, etc.) | IMPLEMENTED — http(s) links only; uploaded files stay in Documents |
+| Deal evaluator — ranks Cash / Novation / Subject-To with fit, suggested offer, profit or cash flow, cash to close, and reasons | IMPLEMENTED — rule-of-thumb suggestions, labeled as such; needs ARV (cash/novation) or loan balance + payment (Subject-To) |
+| Contract generator — Cash Purchase, Novation, and Subject-To agreements prefilled from the property, owners, and analyzer; printable (Print / Save as PDF) and saved to Documents | IMPLEMENTED — template drafts with a prominent attorney-review notice; not attorney-drafted or state-specific |
+| E-signature for generated contracts | PLANNED — REQUIRES THIRD-PARTY CREDENTIALS (DocuSign or similar) |
 
 ## Third-party integrations
 

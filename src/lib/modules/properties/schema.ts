@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { blankToUndefined } from "@/lib/zod-helpers";
 
 export const propertyTypeEnum = z.enum([
   "SINGLE_FAMILY",
@@ -19,12 +20,12 @@ export const createPropertySchema = z.object({
   state: z.string().min(2, "State is required").max(2),
   zip: z.string().min(5, "ZIP is required").max(10),
   propertyType: propertyTypeEnum.default("SINGLE_FAMILY"),
-  bedrooms: z.coerce.number().int().min(0).optional(),
-  bathrooms: z.coerce.number().min(0).optional(),
-  squareFeet: z.coerce.number().int().min(0).optional(),
-  yearBuilt: z.coerce.number().int().min(1600).max(2100).optional(),
-  estimatedValue: z.coerce.number().min(0).optional(),
-  mortgageBalance: z.coerce.number().min(0).optional(),
+  bedrooms: blankToUndefined(z.coerce.number().int().min(0).optional()),
+  bathrooms: blankToUndefined(z.coerce.number().min(0).optional()),
+  squareFeet: blankToUndefined(z.coerce.number().int().min(0).optional()),
+  yearBuilt: blankToUndefined(z.coerce.number().int().min(1600).max(2100).optional()),
+  estimatedValue: blankToUndefined(z.coerce.number().min(0).optional()),
+  mortgageBalance: blankToUndefined(z.coerce.number().min(0).optional()),
 });
 export type CreatePropertyInput = z.infer<typeof createPropertySchema>;
 

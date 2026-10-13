@@ -50,6 +50,8 @@ server-side before render.
 | Settings → Tags | `/settings/tags` | Tag management | 2 |
 | Settings → Integrations | `/settings/integrations` | Provider connection status (SMS/email/etc.) | 5+ |
 | Settings → Webhooks | `/settings/webhooks` | Outbound webhook management | 6 |
+| Settings → Lead Forms | `/settings/lead-forms` | Create/disable public seller intake forms, copy link + embed code | 10 |
+| Public lead form | `/f/[token]` | Unauthenticated seller intake form (embeddable) | 10 |
 | Settings → Audit Log | `/settings/audit-log` | Searchable audit trail | 1 |
 | Search | `/search?q=` | Universal search results | 4 |
 

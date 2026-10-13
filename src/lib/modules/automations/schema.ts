@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { blankToUndefined } from "@/lib/zod-helpers";
 
 /**
  * Only the triggers that fire off real, already-wired mutations are offered — source spec §11
- * also lists Form Submitted, Incoming/Missed Call, and Date Reached, which need infrastructure
- * that doesn't exist yet (public forms, call-answer detection, a scheduler). Contract Signed
- * joined once Phase 7 built Contracts. The Prisma enum still carries every trigger so wiring one
+ * also lists Incoming/Missed Call and Date Reached, which need infrastructure that doesn't exist
+ * yet (call-answer detection, a scheduler). Contract Signed joined once Phase 7 built Contracts;
+ * Form Submitted joined once Phase 10 built public lead-capture forms. The Prisma enum still carries every trigger so wiring one
  * later is additive, not a migration.
  */
 export const supportedTriggerTypeEnum = z.enum([
@@ -17,6 +18,7 @@ export const supportedTriggerTypeEnum = z.enum([
   "APPOINTMENT_SCHEDULED",
   "TASK_COMPLETED",
   "CONTRACT_SIGNED",
+  "FORM_SUBMITTED",
 ]);
 export type SupportedTriggerType = z.infer<typeof supportedTriggerTypeEnum>;
 
@@ -30,6 +32,7 @@ export const TRIGGER_LABELS: Record<SupportedTriggerType, string> = {
   APPOINTMENT_SCHEDULED: "Appointment Scheduled",
   TASK_COMPLETED: "Task Completed",
   CONTRACT_SIGNED: "Contract Signed",
+  FORM_SUBMITTED: "Web Form Submitted",
 };
 
 export const actionTypeEnum = z.enum([
@@ -95,7 +98,7 @@ export const addStepSchema = z.object({
   emailSubject: z.string().max(200).optional(),
   emailBody: z.string().max(20000).optional(),
   taskTitle: z.string().max(200).optional(),
-  taskDueInDays: z.coerce.number().int().min(0).optional(),
+  taskDueInDays: blankToUndefined(z.coerce.number().int().min(0).optional()),
   taskAssignedUserId: z.string().optional(),
   assignUserId: z.string().optional(),
   changeStageId: z.string().optional(),
@@ -104,8 +107,8 @@ export const addStepSchema = z.object({
   notificationBody: z.string().max(1000).optional(),
   notificationUserId: z.string().optional(),
   appointmentType: z.string().optional(),
-  appointmentDaysFromNow: z.coerce.number().int().min(0).optional(),
-  appointmentDurationMinutes: z.coerce.number().int().min(5).optional(),
+  appointmentDaysFromNow: blankToUndefined(z.coerce.number().int().min(0).optional()),
+  appointmentDurationMinutes: blankToUndefined(z.coerce.number().int().min(5).optional()),
   campaignId: z.string().optional(),
   webhookId: z.string().optional(),
 });

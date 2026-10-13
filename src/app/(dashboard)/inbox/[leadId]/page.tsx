@@ -28,8 +28,8 @@ export default async function InboxThreadPage({ params }: PageProps<"/inbox/[lea
   const emails = lead.contact.emailAddresses.map((e) => ({ id: e.id, email: e.email, unsubscribed: e.unsubscribed }));
 
   return (
-    <div className="grid max-w-5xl grid-cols-3 gap-6">
-      <div className="col-span-2 space-y-4">
+    <div className="grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="space-y-4 lg:col-span-2">
         <div>
           <Link href={`/leads/${lead.id}`} className="text-sm text-primary hover:underline">
             ← {lead.contact.firstName} {lead.contact.lastName}

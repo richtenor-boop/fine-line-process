@@ -98,7 +98,7 @@ export function NotificationBell({ initialUnreadCount }: { initialUnreadCount: n
               <li key={n.id}>
                 <button
                   onClick={() => onClickNotification(n)}
-                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${n.readAt ? "" : "bg-blue-50"}`}
+                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${n.readAt ? "" : "bg-accent-soft"}`}
                 >
                   <p className="text-foreground">{n.title}</p>
                   {n.body && <p className="text-xs text-muted">{n.body}</p>}
